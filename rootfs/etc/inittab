@@ -1,0 +1,4 @@
+::sysinit:/etc/init.d/rcS
+::respawn:/bin/cttyhack /sbin/getty -L 0 - vt100
+::ctrlaltdel:/sbin/reboot
+::shutdown:/bin/umount -a -r
