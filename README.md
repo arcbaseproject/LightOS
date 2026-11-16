@@ -69,7 +69,7 @@ rc-service sshd start        # start a service now
 rc-update add sshd default   # start it at every boot
 ```
 
-The boot log shows each service with `[ ok ]` or `[ !! ]` on the screen and the serial port. LightOS enables the same services as a stock Alpine install: mdev, hwclock, fsck, syslog and klogd, networking, seedrng, acpid (the power button shuts down), crond and, if you chose time sync, ntpd.
+The boot log shows each service with `[ ok ]` or `[ !! ]` on the screen and the serial port. LightOS enables the same services as a stock Alpine install: mdev, hwclock, fsck, syslog and klogd, networking, seedrng, acpid (the power button shuts down), crond, `local` (runs your scripts in `/etc/local.d`) and, if you chose time sync, ntpd. On top of that it mounts cgroups v2, gives each install its own `/etc/machine-id`, and sets up compressed swap in RAM (zram, half the size of RAM, configured in `/etc/conf.d/zram-init`).
 
 Settings live in Alpine's usual files: network in `/etc/network/interfaces`, keyboard in `/etc/conf.d/loadkmap`, NTP servers in `/etc/conf.d/ntpd`.
 

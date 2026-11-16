@@ -1,7 +1,7 @@
 #!/bin/sh
 # Enable LightOS's standard OpenRC services in ROOT (default /). Safe to run again.
-# Same set as a stock Alpine install, minus hwdrivers and modules (the kernel has no modules)
-# and swap (unsupported).
+# Same set as a stock Alpine install, minus hwdrivers (the kernel has no modules), plus cgroups,
+# machine-id and zram swap.
 ROOT=${1:-}
 add() {
   lvl=$1; shift
@@ -11,6 +11,6 @@ add() {
   done
 }
 add sysinit sysfs devfs dmesg mdev
-add boot hostname bootmisc hwclock sysctl seedrng syslog klogd loadkmap networking
-add default acpid crond
+add boot hostname bootmisc hwclock sysctl seedrng syslog klogd loadkmap networking cgroups machine-id zram-init
+add default acpid crond local
 add shutdown killprocs mount-ro savecache

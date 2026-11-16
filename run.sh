@@ -7,6 +7,6 @@ cd "$(dirname "$0")"
 [ -f disk.img ] || truncate -s 4G disk.img
 FW=
 [ -n "$UEFI" ] && FW="-bios /usr/share/edk2/x64/OVMF.4m.fd"
-exec qemu-system-x86_64 -m 1G $FW -boot order=cd -cdrom lightos.iso \
+exec qemu-system-x86_64 -m 1G -smp 2 $FW -boot order=cd -cdrom lightos.iso \
   -drive file=disk.img,format=raw,if=virtio -nic user,model=virtio-net-pci \
   -nographic $( [ -w /dev/kvm ] && echo -enable-kvm )

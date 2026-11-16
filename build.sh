@@ -10,7 +10,7 @@ V=3.24.4
 SHA=cdaa38cb8de3537967ee5b6c9b6cd00cc962da2b018e6eea48696bb274923012
 T=alpine-minirootfs-$V-x86_64.tar.gz
 # OpenRC runs services; the rest is what light-install needs.
-PKGS="openrc busybox-openrc busybox-mdev-openrc ifupdown-ng dialog sfdisk e2fsprogs dosfstools limine tzdata kbd-bkeymaps musl-locales doas doas-sudo-shim"
+PKGS="openrc busybox-openrc busybox-mdev-openrc ifupdown-ng zram-init dialog sfdisk e2fsprogs dosfstools limine tzdata kbd-bkeymaps musl-locales doas doas-sudo-shim"
 R=build/root
 
 mkdir -p dl

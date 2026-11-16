@@ -13,6 +13,8 @@ make tinyconfig >/dev/null
   -e EVENTFD -e TIMERFD -e INOTIFY_USER -e MEMFD_CREATE -e AIO -e FHANDLE -e ADVISE_SYSCALLS \
   -e MEMBARRIER -e RSEQ -e KCMP -e CROSS_MEMORY_ATTACH -e IO_URING \
   -e RTC_CLASS -e RTC_DRV_CMOS -e INPUT_EVDEV -e ACPI_BUTTON -e UEVENT_HELPER -e SYN_COOKIES -e IPV6 -e BPF_SYSCALL \
+  -e CGROUPS -e MEMCG -e CGROUP_PIDS -e CGROUP_FREEZER -e CGROUP_SCHED -e CPUSETS -e CGROUP_DEVICE -e CGROUP_CPUACCT \
+  -e SWAP -e ZSMALLOC -e ZRAM -e ZRAM_BACKEND_LZ4 -e ZRAM_BACKEND_ZSTD -e SMP \
   -e SHMEM -e TMPFS -e PROC_FS -e SYSFS -e DEVTMPFS -e DEVTMPFS_MOUNT -e UNIX98_PTYS \
   -e BLK_DEV_INITRD -e RD_GZIP -e ACPI -e PCI -e PCI_MSI \
   -e BLOCK -e EXT4_FS -e EXT4_USE_FOR_EXT2 \
@@ -25,6 +27,7 @@ make tinyconfig >/dev/null
   -e USB_SUPPORT -e USB -e USB_XHCI_HCD -e USB_EHCI_HCD -e HID -e HID_GENERIC -e USB_HID \
   -e PARTITION_ADVANCED -e EFI_PARTITION -e MSDOS_PARTITION -e SCSI -e BLK_DEV_SD -e ATA -e SATA_AHCI \
   -e BLK_DEV_NVME -e USB_STORAGE -e FAT_FS -e VFAT_FS -e NLS -e NLS_CODEPAGE_437 -e NLS_ISO8859_1
+./scripts/config --set-val NR_CPUS 256
 make olddefconfig >/dev/null
 # Config changed: rebuild from clean. An incremental build after adding NET_NS once produced a
 # kernel that panicked at boot (struct layouts mixed between old and new objects).

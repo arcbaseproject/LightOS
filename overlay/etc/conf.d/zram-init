@@ -1,0 +1,9 @@
+# LightOS: one compressed swap device in RAM, half the size of RAM, using zstd.
+# zram is built into the kernel, so there's no module to load or unload.
+load_on_start=no
+unload_on_stop=no
+num_devices=1
+type0=swap
+size0=$(( $(awk '/^MemTotal:/ { print $2 }' /proc/meminfo) / 2048 ))
+algo0=zstd
+labl0=zram_swap

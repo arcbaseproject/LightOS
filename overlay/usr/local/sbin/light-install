@@ -222,6 +222,8 @@ do_install() {
 
   progress 55 "Configuring"
   cp -a /usr/share/lightos/installed/etc/. $MNT/etc/
+  # The live session's machine-id; OpenRC makes a new one on first boot.
+  rm -f $MNT/etc/machine-id
   echo "$HOST" > $MNT/etc/hostname
   printf '127.0.1.1\t%s\n' "$HOST" >> $MNT/etc/hosts
   BOOTUUID=$(blkid "$BOOT" | sed -n 's/.* UUID="\([^"]*\)".*/\1/p')
