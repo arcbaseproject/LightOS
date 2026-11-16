@@ -40,9 +40,24 @@ The live system logs you in as root. Run:
 light-install
 ```
 
-The installer asks for a disk, a hostname, a root password and an optional user, then shows a summary. Nothing touches the disk until you confirm.
+The installer works like archinstall: a main menu lists every setting with its current value. Set them in any order, then choose Install.
 
-It erases the disk and creates three partitions: a 1 MiB BIOS boot partition, a 256 MiB EFI system partition mounted at `/boot`, and an ext4 root. Then it copies the live system over and installs limine. If a step fails, it shows the end of `/tmp/light-install.log`.
+| Item | Options |
+|------|---------|
+| Keyboard layout | 83 console layouts and their variants. Applies right away, so the passwords you type use it. |
+| Locale | `LANG`, from the 16 languages musl has translations for. |
+| Disk | Required. Lists disks of 1 GiB or more that aren't in use. |
+| Hostname | Defaults to `lightos`. |
+| Root password | Required. |
+| User account | Optional, with or without `sudo` (doas, with a `sudo` command). |
+| Timezone | Region, then city. |
+| Time sync (NTP) | Busybox `ntpd` at boot, against `pool.ntp.org`. |
+| Network | Wired DHCP on `eth0`, or none. |
+| Extra packages | Alpine packages to install along with the system. Needs a network connection. |
+
+Install shows a summary and erases nothing until you confirm. Then it creates three partitions: a 1 MiB BIOS boot partition, a 256 MiB EFI system partition mounted at `/boot`, and an ext4 root. It copies the live system over, applies your settings and installs limine. If a step fails, it shows the end of `/tmp/light-install.log`.
+
+The installed system keeps its keyboard, network and NTP settings in `/etc/lightos.conf`. Edit the file to change them.
 
 To install on a real machine, write the ISO to a USB stick:
 
@@ -81,7 +96,7 @@ lpkg search editor
 ## Limits
 
 - The kernel drives virtio, SATA, NVMe and USB disks, Intel e1000 and virtio network cards, and USB keyboards. Wi-Fi and most other network cards don't work yet.
-- The installer takes a whole disk. It doesn't dual-boot, encrypt or resize.
+- The installer takes a whole disk. It doesn't dual-boot, encrypt, resize, add swap or install a desktop.
 - New kernels don't arrive through `lpkg`. Rebuild with `kernel.sh` and copy `bzImage` to `/boot`.
 - `poweroff -f` skips unmounting the disk. Use `poweroff`.
 

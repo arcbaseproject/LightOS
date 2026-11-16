@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 V=3.24.4
 SHA=cdaa38cb8de3537967ee5b6c9b6cd00cc962da2b018e6eea48696bb274923012
 T=alpine-minirootfs-$V-x86_64.tar.gz
-PKGS="dialog sfdisk e2fsprogs dosfstools limine"   # what light-install needs
+PKGS="dialog sfdisk e2fsprogs dosfstools limine tzdata kbd-bkeymaps musl-locales doas doas-sudo-shim"   # what light-install needs
 R=build/root
 
 mkdir -p dl

@@ -6,6 +6,16 @@ mount -t tmpfs tmpfs /run
 mount -t tmpfs tmpfs /tmp
 mount -a
 hostname -F /etc/hostname 2>/dev/null || hostname lightos
+
+# Settings written by light-install. Defaults: US keyboard, DHCP, no NTP.
+KEYMAP= NETWORK=dhcp NTP=no
+[ -r /etc/lightos.conf ] && . /etc/lightos.conf
+[ -n "$KEYMAP" ] && zcat "/usr/share/bkeymaps/$KEYMAP.bmap.gz" 2>/dev/null | loadkmap 2>/dev/null
+
 echo "Welcome to LightOS"
 ip link set lo up
-ip link set eth0 up 2>/dev/null && udhcpc -i eth0 -q -t 5 -n
+if [ "$NETWORK" = dhcp ] && ip link set eth0 up 2>/dev/null; then
+  # Waits up to 5 tries, then keeps trying in the background; stays running to renew the lease.
+  udhcpc -i eth0 -t 5 -b -S
+fi
+[ "$NTP" = yes ] && ntpd -p pool.ntp.org

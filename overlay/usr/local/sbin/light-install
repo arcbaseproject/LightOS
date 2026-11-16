@@ -1,50 +1,163 @@
 #!/bin/sh
-# light-install: install LightOS from the live system to a disk, with a dialog TUI.
+# light-install: install LightOS from the live system to a disk.
+# Menu-driven like archinstall: set each item in any order, then choose Install.
 # Disk layout: GPT. 1: 1 MiB BIOS boot (limine stage 2), 2: 256 MiB EFI system partition
-# (FAT32, mounted at /boot), 3: ext4 root.
-# limine boots the result on both BIOS and UEFI machines.
+# (FAT32, mounted at /boot), 3: ext4 root. limine boots the result on BIOS and UEFI.
 
 TITLE="LightOS Installer"
 LOG=/tmp/light-install.log
+RC=/tmp/light-install.rc
 MNT=/mnt/lightos
+KM=/usr/share/bkeymaps
+ZI=/usr/share/zoneinfo
 
 [ "$(id -u)" = 0 ] || { echo "light-install: run as root" >&2; exit 1; }
 command -v dialog >/dev/null || { echo "light-install: needs dialog (lpkg add dialog)" >&2; exit 1; }
 
 # dialog draws on the terminal and prints the answer on stderr; swap so $(D ...) captures it.
 D() { dialog --backtitle "$TITLE" "$@" 3>&1 1>&2 2>&3; }
-quit() { clear; echo "light-install: cancelled, nothing was changed"; exit 1; }
+msg() { D --msgbox "$1" ${2:-7} 60; }
+quit() { clear; echo "light-install: aborted, nothing was changed"; exit 1; }
 
 human() { awk -v b="$1" 'BEGIN { split("B KiB MiB GiB TiB", u); i = 1
   while (b >= 1024 && i < 5) { b /= 1024; i++ } printf "%.1f %s", b, u[i] }'; }
+disksize() { human $(( $(cat /sys/block/$1/size) * 512 )); }
 
 # Partition device: sda + 1 -> sda1, nvme0n1 + 1 -> nvme0n1p1
 part() { case $1 in *[0-9]) echo "/dev/${1}p$2" ;; *) echo "/dev/$1$2" ;; esac; }
 
-pick_disk() {
+# --- Settings and defaults ---
+KEYMAP=          # empty: US, the kernel's built-in layout
+LOCALE=C.UTF-8
+DISK=
+HOST=lightos
+ROOTPW=
+USERNAME= USERPW= USERSUDO=yes
+TZONE=UTC
+NTP=yes
+NETWORK=dhcp
+EXTRA=
+
+# Save the current (US) layout so choosing "us" again can restore it. VT only, not serial.
+dumpkmap > /tmp/light-install.us.bmap 2>/dev/null
+
+# --- Item editors. Cancel or Esc leaves the setting unchanged. ---
+
+set_keymap() {
+  set -- us
+  for d in $KM/*/; do d=${d%/}; set -- "$@" "${d##*/}"; done
+  lang=$(D --title "Keyboard layout" --no-items --default-item "${KEYMAP%%/*}" --menu "Layout:" 20 40 12 "$@") || return 0
+  if [ "$lang" = us ]; then
+    KEYMAP=
+    loadkmap < /tmp/light-install.us.bmap 2>/dev/null
+    return 0
+  fi
+  set --
+  for f in $KM/$lang/*.bmap.gz; do f=${f##*/}; set -- "$@" "${f%.bmap.gz}"; done
+  if [ $# -gt 1 ]; then
+    var=$(D --title "Keyboard layout" --no-items --default-item "$lang" --menu "Variant:" 20 40 12 "$@") || return 0
+  else
+    var=$1
+  fi
+  KEYMAP=$lang/$var
+  # Apply now, so the passwords you type next use this layout.
+  zcat "$KM/$KEYMAP.bmap.gz" | loadkmap 2>/dev/null
+}
+
+set_locale() {
+  set -- C.UTF-8
+  for f in /usr/share/i18n/locales/musl/*; do set -- "$@" "${f##*/}"; done
+  l=$(D --title "Locale" --no-items --default-item "$LOCALE" --menu "System language (LANG):" 20 40 12 "$@") && LOCALE=$l
+}
+
+set_disk() {
   set --
   for s in /sys/block/*; do
     n=${s##*/}
     case $n in loop*|ram*|sr*|zram*|dm-*|md*) continue ;; esac
-    bytes=$(( $(cat "$s/size") * 512 ))
-    [ "$bytes" -ge 1073741824 ] || continue                 # skip disks under 1 GiB
-    grep -q "^/dev/$n" /proc/mounts && continue              # skip disks in use (the running system)
+    [ $(( $(cat "$s/size") * 512 )) -ge 1073741824 ] || continue   # skip disks under 1 GiB
+    grep -q "^/dev/$n" /proc/mounts && continue                     # skip disks in use
     model=$(cat "$s/device/model" 2>/dev/null | tr -s ' ')
-    set -- "$@" "$n" "$(human "$bytes")  ${model:-disk}"
+    set -- "$@" "$n" "$(disksize "$n")  ${model:-disk}"
   done
-  [ $# -gt 0 ] || { D --msgbox "No usable disk found (1 GiB or larger, not in use)." 7 60; quit; }
-  D --title "Disk" --menu "Choose the disk to install LightOS on.\nEverything on it will be erased." 15 64 6 "$@"
+  [ $# -gt 0 ] || { msg "No usable disk found (1 GiB or larger, not in use)."; return 0; }
+  d=$(D --title "Disk" --default-item "$DISK" --menu "Disk to install LightOS on.\nEverything on it will be erased." 15 64 6 "$@") && DISK=$d
 }
 
-ask_password() { # label
-  while :; do
-    p1=$(D --insecure --title "$1" --passwordbox "Password for $1:" 8 60) || quit
-    p2=$(D --insecure --title "$1" --passwordbox "Type it again:" 8 60) || quit
-    if [ -z "$p1" ]; then D --msgbox "The password can't be empty." 6 40
-    elif [ "$p1" != "$p2" ]; then D --msgbox "The passwords don't match." 6 40
-    else echo "$p1"; return; fi
+set_hostname() {
+  while h=$(D --title "Hostname" --inputbox "Name for this computer:" 8 60 "$HOST"); do
+    case $h in ''|-*|*[!a-zA-Z0-9-]*) msg "Use letters, digits and dashes only." ;; *) HOST=$h; return ;; esac
   done
 }
+
+ask_password() { # label; prints the password, fails on cancel
+  while :; do
+    p1=$(D --insecure --title "$1" --passwordbox "Password for $1:" 8 60) || return 1
+    p2=$(D --insecure --title "$1" --passwordbox "Type it again:" 8 60) || return 1
+    if [ -z "$p1" ]; then msg "The password can't be empty."
+    elif [ "$p1" != "$p2" ]; then msg "The passwords don't match."
+    else echo "$p1"; return 0; fi
+  done
+}
+
+set_rootpw() { p=$(ask_password root) && ROOTPW=$p; }
+
+set_user() {
+  if [ -n "$USERNAME" ]; then
+    a=$(D --title "User account" --menu "User: $USERNAME" 10 50 2 change "Change the user" remove "Remove the user") || return 0
+    [ "$a" = remove ] && { USERNAME=; USERPW=; return 0; }
+  fi
+  while u=$(D --title "User account" --inputbox "Username:" 8 60 "$USERNAME"); do
+    case $u in
+      root) msg "Pick a name other than root." ;;
+      ''|[!a-z_]*|*[!a-z0-9_-]*) msg "Use lowercase letters, digits, - and _, starting with a letter." ;;
+      *) p=$(ask_password "$u") || return 0
+         if D --title "User account" --yesno "Let $u run commands as root with sudo?" 6 50; then USERSUDO=yes; else USERSUDO=no; fi
+         USERNAME=$u USERPW=$p
+         return 0 ;;
+    esac
+  done
+}
+
+set_timezone() {
+  r=$(D --title "Timezone" --no-items --default-item "${TZONE%%/*}" --menu "Region:" 20 40 12 \
+    UTC Africa America Antarctica Arctic Asia Atlantic Australia Europe Indian Pacific) || return 0
+  [ "$r" = UTC ] && { TZONE=UTC; return 0; }
+  # Zone names contain no spaces, so word splitting is safe here.
+  # shellcheck disable=SC2046
+  set -- $(cd $ZI && find "$r" -type f | sort)
+  t=$(D --title "Timezone" --no-items --default-item "$TZONE" --menu "City:" 20 50 12 "$@") && TZONE=$t
+}
+
+set_ntp() {
+  if D --title "Time sync" --yesno "Sync the clock over the internet (NTP) at boot?" 6 54; then NTP=yes; else NTP=no; fi
+}
+
+set_network() {
+  n=$(D --title "Network" --default-item "$NETWORK" --menu "Network setup:" 10 56 2 \
+    dhcp "Wired, automatic (DHCP on eth0)" none "No network") && NETWORK=$n
+}
+
+set_extra() {
+  while e=$(D --title "Extra packages" --inputbox "Alpine packages to install, separated by spaces.\nNeeds a network connection during install." 9 64 "$EXTRA"); do
+    case $e in *[!a-z0-9._+\ -]*) msg "Package names use lowercase letters, digits and . _ + -" ;; *) EXTRA=$(echo $e); return ;; esac
+  done
+}
+
+summary() {
+  echo "Keyboard layout:  ${KEYMAP:-us}"
+  echo "Locale:           $LOCALE"
+  echo "Disk:             ${DISK:+/dev/$DISK ($(disksize $DISK))}"
+  echo "Hostname:         $HOST"
+  echo "Root password:    ${ROOTPW:+set}"
+  echo "User account:     ${USERNAME:-none}${USERNAME:+ (sudo: $USERSUDO)}"
+  echo "Timezone:         $TZONE"
+  echo "Time sync (NTP):  $NTP"
+  echo "Network:          $NETWORK"
+  echo "Extra packages:   ${EXTRA:-none}"
+}
+
+# --- Install. Runs with stdout/stderr in $LOG and progress on fd 3; any failing command aborts. ---
 
 progress() { printf 'XXX\n%s\n%s\nXXX\n' "$1" "$2" >&3; }
 
@@ -52,7 +165,6 @@ cleanup() {
   for m in $MNT/dev $MNT/proc $MNT/boot $MNT; do mountpoint -q $m && umount $m; done
 }
 
-# Runs with stdout/stderr in $LOG and progress on fd 3. Any failing command aborts (set -e).
 do_install() {
   set -e
   exec 3>&1 >>$LOG 2>&1
@@ -64,7 +176,7 @@ do_install() {
     sfdisk --wipe always --wipe-partitions always "/dev/$DISK"
   i=0; until [ -b "$ROOT" ]; do i=$((i + 1)); [ $i -le 10 ]; sleep 1; done
 
-  progress 15 "Formatting partitions"
+  progress 12 "Formatting partitions"
   mkfs.vfat -F 32 -n LIGHTBOOT "$BOOT"
   mkfs.ext4 -q -F -L lightos "$ROOT"
   mkdir -p $MNT
@@ -72,12 +184,12 @@ do_install() {
   mkdir $MNT/boot
   mount "$BOOT" $MNT/boot
 
-  progress 25 "Copying the system"
+  progress 20 "Copying the system"
   for d in bin etc home lib media opt root sbin srv usr var; do cp -a /$d $MNT/; done
   mkdir -p $MNT/proc $MNT/sys $MNT/dev $MNT/run $MNT/mnt $MNT/tmp
   chmod 1777 $MNT/tmp
 
-  progress 70 "Configuring"
+  progress 55 "Configuring"
   cp -a /usr/share/lightos/installed/etc/. $MNT/etc/
   rm -f $MNT/usr/local/sbin/autologin
   echo "$HOST" > $MNT/etc/hostname
@@ -85,13 +197,29 @@ do_install() {
   BOOTUUID=$(blkid "$BOOT" | sed -n 's/.* UUID="\([^"]*\)".*/\1/p')
   [ -n "$BOOTUUID" ]
   printf 'UUID=%s\t/boot\tvfat\tdefaults\t0 2\n' "$BOOTUUID" >> $MNT/etc/fstab
+  printf '# Written by light-install, read by /etc/init.d/rcS.\nKEYMAP=%s\nNETWORK=%s\nNTP=%s\n' \
+    "$KEYMAP" "$NETWORK" "$NTP" > $MNT/etc/lightos.conf
+  printf 'export LANG=%s\n' "$LOCALE" > $MNT/etc/profile.d/locale.sh
+  ln -sf "../usr/share/zoneinfo/$TZONE" $MNT/etc/localtime
+  echo "$TZONE" > $MNT/etc/timezone
   mount --bind /dev $MNT/dev
   mount -t proc proc $MNT/proc
   echo "root:$ROOTPW" | chroot $MNT chpasswd
   if [ -n "$USERNAME" ]; then
     chroot $MNT adduser -D -s /bin/sh "$USERNAME"
-    chroot $MNT addgroup "$USERNAME" wheel
     echo "$USERNAME:$USERPW" | chroot $MNT chpasswd
+    if [ "$USERSUDO" = yes ]; then
+      chroot $MNT addgroup "$USERNAME" wheel
+      echo 'permit persist :wheel' > $MNT/etc/doas.d/wheel.conf
+      chmod 600 $MNT/etc/doas.d/wheel.conf
+    fi
+  fi
+
+  if [ -n "$EXTRA" ]; then
+    progress 65 "Installing extra packages: $EXTRA"
+    cp /etc/resolv.conf $MNT/etc/resolv.conf
+    # shellcheck disable=SC2086
+    chroot $MNT apk add $EXTRA
   fi
 
   progress 85 "Installing the bootloader"
@@ -114,42 +242,59 @@ EOF
   progress 100 "Done"
 }
 
-# --- Questions ---
-D --title "Welcome" --msgbox "This installs LightOS to a disk.\n\nYou'll choose a disk, a hostname and passwords. Nothing changes until you confirm at the end. Press Esc at any question to cancel." 11 60 || quit
+install() {
+  [ -n "$DISK" ] || { msg "Choose a disk first."; return; }
+  [ -n "$ROOTPW" ] || { msg "Set a root password first."; return; }
+  if [ -n "$EXTRA" ] && [ "$NETWORK" = none ]; then
+    msg "Extra packages need the network. Set Network to dhcp or clear the package list." 8; return
+  fi
+  D --title "Confirm" --defaultno --yes-label "Install" --no-label "Back" --yesno \
+    "$(summary)\n\nALL DATA ON /dev/$DISK WILL BE ERASED.\n\nInstall LightOS now?" 20 64 || return
 
-DISK=$(pick_disk) || quit
+  : > $LOG
+  ( ( do_install ); echo $? > $RC ) | D --title "Installing" --gauge "Starting" 8 64 0
+  if [ "$(cat $RC)" != 0 ]; then
+    cleanup 2>/dev/null
+    D --title "Installation failed" --msgbox "Last lines of $LOG:\n\n$(tail -n 12 $LOG)" 20 76
+    clear; echo "light-install: failed, see $LOG"; exit 1
+  fi
+  if D --title "Done" --yesno "LightOS is installed on /dev/$DISK.\n\nRemove the installation media, then reboot.\nReboot now?" 10 60; then
+    clear; reboot; exit 0
+  fi
+  clear; echo "light-install: done. Reboot to start LightOS."; exit 0
+}
 
+# --- Main menu ---
+item="Disk *"
 while :; do
-  HOST=$(D --title "Hostname" --inputbox "Name for this computer:" 8 60 lightos) || quit
-  case $HOST in ''|-*|*[!a-zA-Z0-9-]*) D --msgbox "Use letters, digits and dashes only." 6 50 ;; *) break ;; esac
+  dval="not set"; [ -n "$DISK" ] && dval="/dev/$DISK ($(disksize "$DISK"))"
+  pval="not set"; [ -n "$ROOTPW" ] && pval=set
+  item=$(D --title "$TITLE" --cancel-label "Abort" --default-item "$item" --menu \
+    "Set each item, then choose Install. Items marked * are required." 22 70 13 \
+    "Keyboard layout" "${KEYMAP:-us}" \
+    "Locale" "$LOCALE" \
+    "Disk *" "$dval" \
+    "Hostname" "$HOST" \
+    "Root password *" "$pval" \
+    "User account" "${USERNAME:-none}${USERNAME:+ (sudo: $USERSUDO)}" \
+    "Timezone" "$TZONE" \
+    "Time sync (NTP)" "$NTP" \
+    "Network" "$NETWORK" \
+    "Extra packages" "${EXTRA:-none}" \
+    "Install" "" \
+    "Abort" "") || item=Abort
+  case $item in
+    "Keyboard layout") set_keymap ;;
+    Locale) set_locale ;;
+    "Disk *") set_disk ;;
+    Hostname) set_hostname ;;
+    "Root password *") set_rootpw ;;
+    "User account") set_user ;;
+    Timezone) set_timezone ;;
+    "Time sync (NTP)") set_ntp ;;
+    Network) set_network ;;
+    "Extra packages") set_extra ;;
+    Install) install ;;
+    Abort) D --title "Abort" --yesno "Quit the installer? Nothing has been changed." 6 50 && quit; item=Install ;;
+  esac
 done
-
-ROOTPW=$(ask_password root) || quit
-
-USERNAME=
-if D --title "User" --yesno "Create a regular user account?" 6 50; then
-  while :; do
-    USERNAME=$(D --title "User" --inputbox "Username:" 8 60) || quit
-    case $USERNAME in [a-z_]*) case $USERNAME in *[!a-z0-9_-]*) ;; *) [ "$USERNAME" != root ] && break ;; esac ;; esac
-    D --msgbox "Use lowercase letters, digits, - and _, starting with a letter. Not root." 7 60
-  done
-  USERPW=$(ask_password "$USERNAME") || quit
-fi
-
-SIZE=$(human $(( $(cat /sys/block/$DISK/size) * 512 )))
-D --title "Confirm" --defaultno --yesno "Disk:      /dev/$DISK ($SIZE)\nHostname:  $HOST\nUser:      ${USERNAME:-none}\n\nALL DATA ON /dev/$DISK WILL BE ERASED.\n\nInstall LightOS now?" 13 60 || quit
-
-# --- Install ---
-RC=/tmp/light-install.rc
-: > $LOG
-( ( do_install ); echo $? > $RC ) | D --title "Installing" --gauge "Starting" 8 60 0
-if [ "$(cat $RC)" != 0 ]; then
-  cleanup 2>/dev/null
-  D --title "Installation failed" --msgbox "Last lines of $LOG:\n\n$(tail -n 12 $LOG)" 20 76
-  clear; echo "light-install: failed, see $LOG"; exit 1
-fi
-
-if D --title "Done" --yesno "LightOS is installed on /dev/$DISK.\n\nRemove the installation media, then reboot.\nReboot now?" 10 60; then
-  clear; reboot
-fi
-clear; echo "light-install: done. Reboot to start LightOS."
