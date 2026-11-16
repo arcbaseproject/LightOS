@@ -5,14 +5,15 @@
 # (FAT32, mounted at /boot), 3: ext4 root. limine boots the result on BIOS and UEFI.
 
 TITLE="LightOS Installer"
-LOG=/tmp/light-install.log
-RC=/tmp/light-install.rc
 MNT=/mnt/lightos
 KM=/usr/share/bkeymaps
 ZI=/usr/share/zoneinfo
 
 [ "$(id -u)" = 0 ] || { echo "light-install: run as root" >&2; exit 1; }
 command -v dialog >/dev/null || { echo "light-install: needs dialog (lpkg add dialog)" >&2; exit 1; }
+WORK=$(mktemp -d /tmp/light-install.XXXXXX) || exit 1
+LOG=$WORK/install.log
+RC=$WORK/status
 
 export DIALOGRC=/etc/lightos/dialogrc
 # Draw boxes with Unicode line characters; the DEC line-drawing set breaks on some serial terminals.
@@ -32,6 +33,28 @@ disksize() { human $(( $(cat /sys/block/$1/size) * 512 )); }
 # Partition device: sda + 1 -> sda1, nvme0n1 + 1 -> nvme0n1p1
 part() { case $1 in *[0-9]) echo "/dev/${1}p$2" ;; *) echo "/dev/$1$2" ;; esac; }
 
+# Check device numbers, not mount source names: mounts may use aliases or UUIDs.
+disk_available() (
+  [ -b "/dev/$1" ] && [ -r "/sys/block/$1/dev" ] || exit 1
+  [ "$(cat "/sys/block/$1/ro")" = 0 ] || exit 1
+  for node in /sys/block/"$1" /sys/block/"$1"/*; do
+    [ -r "$node/dev" ] || continue
+    dev=$(cat "$node/dev") || exit 1
+    awk -v dev="$dev" '$3 == dev { found=1 } END { exit found }' /proc/self/mountinfo || exit 1
+    for holder in "$node"/holders/*; do [ ! -e "$holder" ] || exit 1; done
+    while read -r swap rest; do
+      [ "$swap" != Filename ] || continue
+      hex=$(stat -L -c '%t %T' "$swap") || exit 1
+      set -- $hex
+      [ "$(printf '%d:%d' "0x$1" "0x$2")" != "$dev" ] || exit 1
+    done < /proc/swaps || exit 1
+  done
+)
+
+user_available() {
+  awk -F: -v name="$1" '$1 == name { found=1 } END { exit found }' /etc/passwd /etc/group
+}
+
 # --- Settings and defaults ---
 KEYMAP=          # empty: US, the kernel's built-in layout
 LOCALE=C.UTF-8
@@ -45,7 +68,7 @@ NETWORK=dhcp
 EXTRA=
 
 # Save the current (US) layout so choosing "us" again can restore it. VT only, not serial.
-dumpkmap > /tmp/light-install.us.bmap 2>/dev/null
+dumpkmap > "$WORK/us.bmap" 2>/dev/null
 
 # --- Item editors. Cancel or Esc leaves the setting unchanged. ---
 
@@ -55,7 +78,7 @@ set_keymap() {
   lang=$(D --title " Keyboard layout " --no-items --default-item "${KEYMAP%%/*}" --menu "Layout:" 0 0 0 "$@") || return 0
   if [ "$lang" = us ]; then
     KEYMAP=
-    loadkmap < /tmp/light-install.us.bmap 2>/dev/null
+    loadkmap < "$WORK/us.bmap" 2>/dev/null
     return 0
   fi
   set --
@@ -82,7 +105,7 @@ set_disk() {
     n=${s##*/}
     case $n in loop*|ram*|sr*|zram*|dm-*|md*) continue ;; esac
     [ $(( $(cat "$s/size") * 512 )) -ge 1073741824 ] || continue   # skip disks under 1 GiB
-    grep -q "^/dev/$n" /proc/mounts && continue                     # skip disks in use
+    disk_available "$n" || continue                               # skip disks in use
     model=$(cat "$s/device/model" 2>/dev/null | tr -s ' ')
     set -- "$@" "$n" "$(disksize "$n")  ${model:-disk}"
   done
@@ -102,7 +125,7 @@ ask_password() { # label; prints the password, fails on cancel
     p2=$(D --insecure --title " $1 " --passwordbox "Type it again:" 8 60) || return 1
     if [ -z "$p1" ]; then msg "The password can't be empty."
     elif [ "$p1" != "$p2" ]; then msg "The passwords don't match."
-    else echo "$p1"; return 0; fi
+    else printf '%s\n' "$p1"; return 0; fi
   done
 }
 
@@ -117,7 +140,8 @@ set_user() {
     case $u in
       root) msg "Pick a name other than root." ;;
       ''|[!a-z_]*|*[!a-z0-9_-]*) msg "Use lowercase letters, digits, - and _, starting with a letter." ;;
-      *) p=$(ask_password "$u") || return 0
+      *) user_available "$u" || { msg "That user or group already exists. Pick another name."; continue; }
+         p=$(ask_password "$u") || return 0
          if D --title " User account " --yesno "Let $u run commands as root with sudo?" 6 50; then USERSUDO=yes; else USERSUDO=no; fi
          USERNAME=$u USERPW=$p
          return 0 ;;
@@ -178,6 +202,7 @@ do_install() {
   ROOTUUID=$(cat /proc/sys/kernel/random/uuid)
 
   progress 5 "Partitioning /dev/$DISK"
+  disk_available "$DISK" || { echo "Disk unavailable or in use: /dev/$DISK"; exit 1; }
   printf 'label: gpt\nsize=1MiB, type=21686148-6449-6E6F-744E-656564454649, name=bios\nsize=256MiB, type=uefi, name=boot\ntype=linux, name=root, uuid=%s\n' "$ROOTUUID" |
     sfdisk --wipe always --wipe-partitions always "/dev/$DISK"
   i=0; until [ -b "$ROOT" ]; do i=$((i + 1)); [ $i -le 10 ]; sleep 1; done
@@ -210,10 +235,10 @@ do_install() {
   echo "$TZONE" > $MNT/etc/timezone
   mount --bind /dev $MNT/dev
   mount -t proc proc $MNT/proc
-  echo "root:$ROOTPW" | chroot $MNT chpasswd
+  printf 'root:%s\n' "$ROOTPW" | chroot $MNT chpasswd
   if [ -n "$USERNAME" ]; then
     chroot $MNT adduser -D -s /bin/sh "$USERNAME"
-    echo "$USERNAME:$USERPW" | chroot $MNT chpasswd
+    printf '%s:%s\n' "$USERNAME" "$USERPW" | chroot $MNT chpasswd
     if [ "$USERSUDO" = yes ]; then
       chroot $MNT addgroup "$USERNAME" wheel
       echo 'permit persist :wheel' > $MNT/etc/doas.d/wheel.conf
@@ -251,6 +276,10 @@ EOF
 install() {
   [ -n "$DISK" ] || { msg "Choose a disk first."; return; }
   [ -n "$ROOTPW" ] || { msg "Set a root password first."; return; }
+  disk_available "$DISK" || { msg "Disk unavailable or in use. Choose another disk."; return; }
+  if [ -n "$USERNAME" ] && ! user_available "$USERNAME"; then
+    msg "That user or group already exists. Choose another username."; return
+  fi
   if [ -n "$EXTRA" ] && [ "$NETWORK" = none ]; then
     msg "Extra packages need the network. Set Network to dhcp or clear the package list." 8; return
   fi

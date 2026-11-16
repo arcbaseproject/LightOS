@@ -55,7 +55,7 @@ The installer works like archinstall: a main menu lists every setting with its c
 | Network | Wired DHCP on `eth0`, or none. |
 | Extra packages | Alpine packages to install along with the system. Needs a network connection. |
 
-Install shows a summary and erases nothing until you confirm. Then it creates three partitions: a 1 MiB BIOS boot partition, a 256 MiB EFI system partition mounted at `/boot`, and an ext4 root. It copies the live system over, applies your settings and installs limine. If a step fails, it shows the end of `/tmp/light-install.log`.
+Install shows a summary and erases nothing until you confirm. Then it creates three partitions: a 1 MiB BIOS boot partition, a 256 MiB EFI system partition mounted at `/boot`, and an ext4 root. It copies the live system over, applies your settings and installs limine. If a step fails, it shows the end of its log in a private `/tmp/light-install.XXXXXX/` directory and prints the exact path.
 
 The installed system keeps its keyboard, network and NTP settings in `/etc/lightos.conf`. Edit the file to change them.
 
@@ -66,6 +66,19 @@ dd if=lightos.iso of=/dev/sdX bs=4M status=progress
 ```
 
 Replace `/dev/sdX` with your USB stick. `dd` overwrites whatever device you name.
+
+## Updating
+
+```sh
+sudo light-update --check   # only report
+sudo light-update           # install the latest release, then Alpine updates
+```
+
+`light-update` compares `VERSION_ID` in `/etc/os-release` with the latest GitHub release. If the release is newer, it downloads `lightos-update.tar.gz`, checks it against the release's `SHA256SUMS` and installs the new kernel to `/boot` along with LightOS's system files. It then runs `apk upgrade` and refreshes limine. Reboot to start the new kernel.
+
+It never touches your hostname, users, passwords, `fstab` or `/etc/lightos.conf`. Before it replaces any other file in `/etc`, it saves the old copy in `/var/backups/light-update/<old version>/`.
+
+To publish an update: bump `VERSION`, commit and push, run `./build.sh`, then `./release.sh`.
 
 ## Packages
 
@@ -80,15 +93,29 @@ lpkg search editor
 
 `lpkg add fastfetch` shows system info with the LightOS logo.
 
+### Flatpak
+
+```sh
+lpkg add flatpak
+flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak --user install flathub org.freedesktop.Platform//26.08
+flatpak run --command=sh org.freedesktop.Platform//26.08
+```
+
+Install with `--user`, or as root. A system-wide install from a normal account needs D-Bus and polkit, which LightOS doesn't run. LightOS has no desktop yet, so only command-line apps work.
+
 ## Layout
 
 | Path | Purpose |
 |------|---------|
 | `kernel.sh` | Starts from `tinyconfig` and enables only the drivers LightOS uses. Builds no modules. |
 | `build.sh` | Builds the live system from Alpine 3.24 minirootfs, the installer's tools and `overlay/`, then packs `lightos.iso`. |
+| `release.sh` | Publishes `v$VERSION` on GitHub with the ISO, update package and checksums. |
+| `VERSION` | The LightOS version `build.sh` stamps into `/etc/os-release`. |
 | `run.sh` | Boots QEMU with `disk.img` and the ISO. |
 | `overlay/` | Files copied onto the system as-is. |
 | `overlay/usr/local/sbin/light-install` | The installer. |
+| `overlay/usr/local/sbin/light-update` | The updater. |
 | `overlay/usr/local/bin/lpkg` | The package command. |
 | `overlay/etc/init.d/rcS` | Mounts filesystems, sets the hostname and runs DHCP on `eth0`. |
 | `overlay/usr/share/lightos/logo.txt` | The fastfetch logo. |
@@ -96,8 +123,8 @@ lpkg search editor
 ## Limits
 
 - The kernel drives virtio, SATA, NVMe and USB disks, Intel e1000 and virtio network cards, and USB keyboards. Wi-Fi and most other network cards don't work yet.
+- Flatpak runs command-line apps only. Graphical apps need a desktop, which LightOS doesn't have yet.
 - The installer takes a whole disk. It doesn't dual-boot, encrypt, resize, add swap or install a desktop.
-- New kernels don't arrive through `lpkg`. Rebuild with `kernel.sh` and copy `bzImage` to `/boot`.
 - `poweroff -f` skips unmounting the disk. Use `poweroff`.
 
 ## License

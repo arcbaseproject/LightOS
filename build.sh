@@ -29,6 +29,11 @@ rm $R/etc/resolv.conf
 rm $R/etc/os-release
 cp -a overlay/. $R/
 cp bzImage $R/usr/share/lightos/bzImage
+LV=$(cat VERSION)
+sed -i "s/^PRETTY_NAME=.*/PRETTY_NAME=\"LightOS $LV\"/" $R/etc/os-release
+echo "VERSION_ID=$LV" >> $R/etc/os-release
+# Packages LightOS needs; light-update installs any that a new release adds.
+echo "$PKGS" > $R/usr/share/lightos/packages
 # light-install restores these over the live versions below.
 mkdir -p $R/usr/share/lightos/installed/etc
 cp overlay/etc/inittab overlay/etc/motd $R/usr/share/lightos/installed/etc/
@@ -62,4 +67,17 @@ xorriso -as mkisofs -quiet -V LIGHTOS -R -r -J -b boot/limine/limine-bios-cd.bin
   --protective-msdos-label $I -o $R/tmp/lightos.iso
 chroot $R limine bios-install /tmp/lightos.iso >/dev/null
 mv $R/tmp/lightos.iso lightos.iso
-echo "build.sh: wrote lightos.iso ($(du -h lightos.iso | cut -f1))"
+
+# light-update payload: kernel + LightOS files for installed systems. Leaves out the
+# hostname (the user's) and live-only files.
+U=build/update
+mkdir -p $U/boot
+cp -a overlay/. $U/
+rm $U/etc/hostname $U/usr/local/sbin/autologin
+cp $R/etc/os-release $U/etc/
+mkdir -p $U/usr/share/lightos
+cp bzImage $U/boot/bzImage
+cp bzImage $R/usr/share/lightos/packages $U/usr/share/lightos/
+tar -C $U -czf lightos-update.tar.gz .
+sha256sum lightos.iso lightos-update.tar.gz > SHA256SUMS
+echo "build.sh: wrote lightos.iso ($(du -h lightos.iso | cut -f1)) and lightos-update.tar.gz for LightOS $LV"

@@ -7,3 +7,5 @@
 /bzImage
 /lightos.iso
 /disk.img
+/lightos-update.tar.gz
+/SHA256SUMS
