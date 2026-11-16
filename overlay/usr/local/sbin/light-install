@@ -1,0 +1,155 @@
+#!/bin/sh
+# light-install: install LightOS from the live system to a disk, with a dialog TUI.
+# Disk layout: GPT. 1: 1 MiB BIOS boot (limine stage 2), 2: 256 MiB EFI system partition
+# (FAT32, mounted at /boot), 3: ext4 root.
+# limine boots the result on both BIOS and UEFI machines.
+
+TITLE="LightOS Installer"
+LOG=/tmp/light-install.log
+MNT=/mnt/lightos
+
+[ "$(id -u)" = 0 ] || { echo "light-install: run as root" >&2; exit 1; }
+command -v dialog >/dev/null || { echo "light-install: needs dialog (lpkg add dialog)" >&2; exit 1; }
+
+# dialog draws on the terminal and prints the answer on stderr; swap so $(D ...) captures it.
+D() { dialog --backtitle "$TITLE" "$@" 3>&1 1>&2 2>&3; }
+quit() { clear; echo "light-install: cancelled, nothing was changed"; exit 1; }
+
+human() { awk -v b="$1" 'BEGIN { split("B KiB MiB GiB TiB", u); i = 1
+  while (b >= 1024 && i < 5) { b /= 1024; i++ } printf "%.1f %s", b, u[i] }'; }
+
+# Partition device: sda + 1 -> sda1, nvme0n1 + 1 -> nvme0n1p1
+part() { case $1 in *[0-9]) echo "/dev/${1}p$2" ;; *) echo "/dev/$1$2" ;; esac; }
+
+pick_disk() {
+  set --
+  for s in /sys/block/*; do
+    n=${s##*/}
+    case $n in loop*|ram*|sr*|zram*|dm-*|md*) continue ;; esac
+    bytes=$(( $(cat "$s/size") * 512 ))
+    [ "$bytes" -ge 1073741824 ] || continue                 # skip disks under 1 GiB
+    grep -q "^/dev/$n" /proc/mounts && continue              # skip disks in use (the running system)
+    model=$(cat "$s/device/model" 2>/dev/null | tr -s ' ')
+    set -- "$@" "$n" "$(human "$bytes")  ${model:-disk}"
+  done
+  [ $# -gt 0 ] || { D --msgbox "No usable disk found (1 GiB or larger, not in use)." 7 60; quit; }
+  D --title "Disk" --menu "Choose the disk to install LightOS on.\nEverything on it will be erased." 15 64 6 "$@"
+}
+
+ask_password() { # label
+  while :; do
+    p1=$(D --insecure --title "$1" --passwordbox "Password for $1:" 8 60) || quit
+    p2=$(D --insecure --title "$1" --passwordbox "Type it again:" 8 60) || quit
+    if [ -z "$p1" ]; then D --msgbox "The password can't be empty." 6 40
+    elif [ "$p1" != "$p2" ]; then D --msgbox "The passwords don't match." 6 40
+    else echo "$p1"; return; fi
+  done
+}
+
+progress() { printf 'XXX\n%s\n%s\nXXX\n' "$1" "$2" >&3; }
+
+cleanup() {
+  for m in $MNT/dev $MNT/proc $MNT/boot $MNT; do mountpoint -q $m && umount $m; done
+}
+
+# Runs with stdout/stderr in $LOG and progress on fd 3. Any failing command aborts (set -e).
+do_install() {
+  set -e
+  exec 3>&1 >>$LOG 2>&1
+  BOOT=$(part "$DISK" 2); ROOT=$(part "$DISK" 3)
+  ROOTUUID=$(cat /proc/sys/kernel/random/uuid)
+
+  progress 5 "Partitioning /dev/$DISK"
+  printf 'label: gpt\nsize=1MiB, type=21686148-6449-6E6F-744E-656564454649, name=bios\nsize=256MiB, type=uefi, name=boot\ntype=linux, name=root, uuid=%s\n' "$ROOTUUID" |
+    sfdisk --wipe always --wipe-partitions always "/dev/$DISK"
+  i=0; until [ -b "$ROOT" ]; do i=$((i + 1)); [ $i -le 10 ]; sleep 1; done
+
+  progress 15 "Formatting partitions"
+  mkfs.vfat -F 32 -n LIGHTBOOT "$BOOT"
+  mkfs.ext4 -q -F -L lightos "$ROOT"
+  mkdir -p $MNT
+  mount "$ROOT" $MNT
+  mkdir $MNT/boot
+  mount "$BOOT" $MNT/boot
+
+  progress 25 "Copying the system"
+  for d in bin etc home lib media opt root sbin srv usr var; do cp -a /$d $MNT/; done
+  mkdir -p $MNT/proc $MNT/sys $MNT/dev $MNT/run $MNT/mnt $MNT/tmp
+  chmod 1777 $MNT/tmp
+
+  progress 70 "Configuring"
+  cp -a /usr/share/lightos/installed/etc/. $MNT/etc/
+  rm -f $MNT/usr/local/sbin/autologin
+  echo "$HOST" > $MNT/etc/hostname
+  printf '127.0.1.1\t%s\n' "$HOST" >> $MNT/etc/hosts
+  BOOTUUID=$(blkid "$BOOT" | sed -n 's/.* UUID="\([^"]*\)".*/\1/p')
+  [ -n "$BOOTUUID" ]
+  printf 'UUID=%s\t/boot\tvfat\tdefaults\t0 2\n' "$BOOTUUID" >> $MNT/etc/fstab
+  mount --bind /dev $MNT/dev
+  mount -t proc proc $MNT/proc
+  echo "root:$ROOTPW" | chroot $MNT chpasswd
+  if [ -n "$USERNAME" ]; then
+    chroot $MNT adduser -D -s /bin/sh "$USERNAME"
+    chroot $MNT addgroup "$USERNAME" wheel
+    echo "$USERNAME:$USERPW" | chroot $MNT chpasswd
+  fi
+
+  progress 85 "Installing the bootloader"
+  cp /usr/share/lightos/bzImage /usr/share/limine/limine-bios.sys $MNT/boot/
+  mkdir -p $MNT/boot/EFI/BOOT
+  cp /usr/share/limine/BOOTX64.EFI $MNT/boot/EFI/BOOT/
+  cat > $MNT/boot/limine.conf <<EOF
+timeout: 3
+
+/LightOS
+    protocol: linux
+    path: boot():/bzImage
+    cmdline: root=PARTUUID=$ROOTUUID rootwait rw console=ttyS0 console=tty0 quiet
+EOF
+  limine bios-install "/dev/$DISK" 1
+
+  progress 95 "Finishing"
+  sync
+  cleanup
+  progress 100 "Done"
+}
+
+# --- Questions ---
+D --title "Welcome" --msgbox "This installs LightOS to a disk.\n\nYou'll choose a disk, a hostname and passwords. Nothing changes until you confirm at the end. Press Esc at any question to cancel." 11 60 || quit
+
+DISK=$(pick_disk) || quit
+
+while :; do
+  HOST=$(D --title "Hostname" --inputbox "Name for this computer:" 8 60 lightos) || quit
+  case $HOST in ''|-*|*[!a-zA-Z0-9-]*) D --msgbox "Use letters, digits and dashes only." 6 50 ;; *) break ;; esac
+done
+
+ROOTPW=$(ask_password root) || quit
+
+USERNAME=
+if D --title "User" --yesno "Create a regular user account?" 6 50; then
+  while :; do
+    USERNAME=$(D --title "User" --inputbox "Username:" 8 60) || quit
+    case $USERNAME in [a-z_]*) case $USERNAME in *[!a-z0-9_-]*) ;; *) [ "$USERNAME" != root ] && break ;; esac ;; esac
+    D --msgbox "Use lowercase letters, digits, - and _, starting with a letter. Not root." 7 60
+  done
+  USERPW=$(ask_password "$USERNAME") || quit
+fi
+
+SIZE=$(human $(( $(cat /sys/block/$DISK/size) * 512 )))
+D --title "Confirm" --defaultno --yesno "Disk:      /dev/$DISK ($SIZE)\nHostname:  $HOST\nUser:      ${USERNAME:-none}\n\nALL DATA ON /dev/$DISK WILL BE ERASED.\n\nInstall LightOS now?" 13 60 || quit
+
+# --- Install ---
+RC=/tmp/light-install.rc
+: > $LOG
+( ( do_install ); echo $? > $RC ) | D --title "Installing" --gauge "Starting" 8 60 0
+if [ "$(cat $RC)" != 0 ]; then
+  cleanup 2>/dev/null
+  D --title "Installation failed" --msgbox "Last lines of $LOG:\n\n$(tail -n 12 $LOG)" 20 76
+  clear; echo "light-install: failed, see $LOG"; exit 1
+fi
+
+if D --title "Done" --yesno "LightOS is installed on /dev/$DISK.\n\nRemove the installation media, then reboot.\nReboot now?" 10 60; then
+  clear; reboot
+fi
+clear; echo "light-install: done. Reboot to start LightOS."

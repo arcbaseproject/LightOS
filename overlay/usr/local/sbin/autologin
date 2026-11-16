@@ -1,0 +1,3 @@
+#!/bin/sh
+# Live system only: getty runs this to log in as root without a password.
+exec login -f root

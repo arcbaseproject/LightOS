@@ -1,40 +1,56 @@
 # LightOS
 
-LightOS is a small Linux distribution. It pairs a 2.7 MB custom kernel with Alpine Linux's userland, so you install software from Alpine's 28,000 packages with `lpkg`. The system runs from an ext4 disk, and everything you install or change stays across reboots.
+LightOS is a small Linux distribution. It pairs a 3 MB custom kernel with Alpine Linux's userland, so you install software from Alpine's 28,000 packages with `lpkg`.
 
-A busybox-only live system boots from the ISO and runs from RAM.
+You boot the 16 MB ISO into a live system that runs from RAM, then run `light-install` to put LightOS on a disk. The installed system boots on BIOS and UEFI machines.
 
 ## Requirements
 
 Arch Linux package names:
 
 ```
-base-devel bc flex bison libelf qemu-system-x86 cpio xorriso limine fakeroot
+base-devel bc flex bison libelf cpio xorriso qemu-system-x86 edk2-ovmf
 ```
 
-Fetch busybox and Linux into the repo folder:
+`build.sh` runs apk without sudo inside a user namespace. Your user needs an entry in `/etc/subuid` and `/etc/subgid`; Arch's `useradd` creates them.
+
+Fetch the Linux source into the repo folder:
 
 ```sh
-git clone https://git.busybox.net/busybox
-git -C busybox checkout 8d79a6335cc5bf052635c1a22a3f76918f682bdf
-cp busybox.config busybox/.config
 mkdir kernel && curl -L https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.3.4.tar.xz | tar xJ -C kernel
 ```
 
 ## Build and run
 
 ```sh
-make -C busybox                     # disk.sh uses it to hash the root password
-./kernel.sh                         # builds bzImage
-ROOT_PASSWORD=yourpass ./disk.sh    # builds disk.img
-./run.sh                            # boots in QEMU
+./kernel.sh   # builds bzImage
+./build.sh    # builds lightos.iso
+./run.sh      # boots it in QEMU
 ```
 
-Log in as `root`. If you leave `ROOT_PASSWORD` unset, `disk.sh` uses `lightos` and prints a warning.
+`run.sh` attaches a 4 GB `disk.img` and boots from it once LightOS is installed there. Until then it boots the ISO. Set `UEFI=1` to boot with UEFI firmware instead of BIOS.
 
-To leave QEMU, press Ctrl-A, then X. Type `poweroff` to unmount the disk and shut down.
+To leave QEMU, press Ctrl-A, then X.
 
-`disk.sh` refuses to touch an existing `disk.img`. Delete the file yourself to start over, and you lose everything on it.
+## Installing
+
+The live system logs you in as root. Run:
+
+```sh
+light-install
+```
+
+The installer asks for a disk, a hostname, a root password and an optional user, then shows a summary. Nothing touches the disk until you confirm.
+
+It erases the disk and creates three partitions: a 1 MiB BIOS boot partition, a 256 MiB EFI system partition mounted at `/boot`, and an ext4 root. Then it copies the live system over and installs limine. If a step fails, it shows the end of `/tmp/light-install.log`.
+
+To install on a real machine, write the ISO to a USB stick:
+
+```sh
+dd if=lightos.iso of=/dev/sdX bs=4M status=progress
+```
+
+Replace `/dev/sdX` with your USB stick. `dd` overwrites whatever device you name.
 
 ## Packages
 
@@ -47,38 +63,28 @@ lpkg search editor
 
 `lpkg` passes every command to Alpine's `apk`, and `apk` itself still works. Alpine's [package search](https://pkgs.alpinelinux.org/packages) lists what you can install. apk checks Alpine's signatures on every package.
 
-`lpkg add fastfetch` shows system info with the LightOS logo, `diskfs/usr/share/lightos/logo.txt`.
-
-## Bootable ISO
-
-```sh
-make -C busybox CONFIG_PREFIX=../rootfs install
-./build.sh    # packs rootfs/ into initramfs.cpio.gz
-./iso.sh      # writes lightos.iso
-```
-
-The ISO boots the busybox live system on BIOS and UEFI machines through limine. It has no `lpkg`. Attach a virtio disk and the live system mounts it over `/root`.
+`lpkg add fastfetch` shows system info with the LightOS logo.
 
 ## Layout
 
 | Path | Purpose |
 |------|---------|
 | `kernel.sh` | Starts from `tinyconfig` and enables only the drivers LightOS uses. Builds no modules. |
-| `disk.sh` | Builds a 2 GB `disk.img` from Alpine 3.24 minirootfs plus LightOS's boot files and root password. |
-| `diskfs/` | Files `disk.sh` copies onto the disk as-is: `lpkg`, the logo and its fastfetch config. |
-| `run.sh` | Boots `disk.img` in QEMU with virtio networking. |
-| `busybox.config` | Busybox config for the live system: static, with init, login, DHCP and HTTPS `wget`. |
-| `build.sh` | Packs `rootfs/` into the live system's `initramfs.cpio.gz`. |
-| `iso.sh` | Builds `lightos.iso`. |
-| `rootfs/etc/init.d/rcS` | Mounts filesystems and runs DHCP on `eth0`. Both systems use it. |
-| `rootfs/etc/inittab` | Starts `rcS` and login prompts on `tty1` and `ttyS0`. |
+| `build.sh` | Builds the live system from Alpine 3.24 minirootfs, the installer's tools and `overlay/`, then packs `lightos.iso`. |
+| `run.sh` | Boots QEMU with `disk.img` and the ISO. |
+| `overlay/` | Files copied onto the system as-is. |
+| `overlay/usr/local/sbin/light-install` | The installer. |
+| `overlay/usr/local/bin/lpkg` | The package command. |
+| `overlay/etc/init.d/rcS` | Mounts filesystems, sets the hostname and runs DHCP on `eth0`. |
+| `overlay/usr/share/lightos/logo.txt` | The fastfetch logo. |
 
 ## Limits
 
-- The kernel has drivers for virtio and Intel e1000 hardware only. On a real PC the live system gets no disk.
-- The live system loses changes outside `/root` at reboot, and its busybox `wget` skips certificate checks.
+- The kernel drives virtio, SATA, NVMe and USB disks, Intel e1000 and virtio network cards, and USB keyboards. Wi-Fi and most other network cards don't work yet.
+- The installer takes a whole disk. It doesn't dual-boot, encrypt or resize.
+- New kernels don't arrive through `lpkg`. Rebuild with `kernel.sh` and copy `bzImage` to `/boot`.
 - `poweroff -f` skips unmounting the disk. Use `poweroff`.
 
 ## License
 
-GPL-2.0. See [LICENSE](LICENSE). Busybox and Linux carry their own GPL-2.0 licenses. Alpine packages keep their own licenses.
+GPL-2.0. See [LICENSE](LICENSE). Linux carries its own GPL-2.0 license, and Alpine packages keep their own licenses.
