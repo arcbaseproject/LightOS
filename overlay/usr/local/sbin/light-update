@@ -51,12 +51,17 @@ if [ $UPDATE = yes ]; then
     if [ -f "/$f" ] && ! cmp -s "$W/new/$f" "/$f"; then mkdir -p "$B/${f%/*}"; cp -a "/$f" "$B/$f"; fi
   done
 
+  # Install the packages the new release needs before its files, which may depend on them
+  # (0.2.0's inittab needs OpenRC). If this fails, nothing has been replaced yet.
+  echo "Installing packages LightOS $NEW needs"
+  # shellcheck disable=SC2046
+  apk add -q $(cat "$W/new/usr/share/lightos/packages") || die "package install failed, nothing replaced"
+
   echo "Installing LightOS $NEW"
   cp "$W/new/boot/bzImage" /boot/bzImage.new && mv /boot/bzImage.new /boot/bzImage
   rm -r "$W/new/boot"
   cp -a "$W/new/." /
-  # shellcheck disable=SC2046
-  apk add -q $(cat /usr/share/lightos/packages)
+  /usr/share/lightos/post-update
   [ -d "$B" ] && echo "Replaced /etc files are backed up in $B"
 fi
 

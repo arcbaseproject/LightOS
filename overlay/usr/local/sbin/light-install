@@ -222,14 +222,17 @@ do_install() {
 
   progress 55 "Configuring"
   cp -a /usr/share/lightos/installed/etc/. $MNT/etc/
-  rm -f $MNT/usr/local/sbin/autologin
   echo "$HOST" > $MNT/etc/hostname
   printf '127.0.1.1\t%s\n' "$HOST" >> $MNT/etc/hosts
   BOOTUUID=$(blkid "$BOOT" | sed -n 's/.* UUID="\([^"]*\)".*/\1/p')
   [ -n "$BOOTUUID" ]
   printf 'UUID=%s\t/boot\tvfat\tdefaults\t0 2\n' "$BOOTUUID" >> $MNT/etc/fstab
-  printf '# Written by light-install, read by /etc/init.d/rcS.\nKEYMAP=%s\nNETWORK=%s\nNTP=%s\n' \
-    "$KEYMAP" "$NETWORK" "$NTP" > $MNT/etc/lightos.conf
+  # Root is mounted read-only at boot so fsck can check it; OpenRC remounts it read-write from here.
+  printf 'PARTUUID=%s\t/\text4\trw,relatime\t0 1\n' "$ROOTUUID" >> $MNT/etc/fstab
+  if [ -n "$KEYMAP" ]; then echo "KEYMAP=/usr/share/bkeymaps/$KEYMAP.bmap.gz" > $MNT/etc/conf.d/loadkmap; fi
+  printf 'auto lo\niface lo inet loopback\n' > $MNT/etc/network/interfaces
+  [ "$NETWORK" = none ] || printf '\nauto eth0\niface eth0 inet dhcp\n' >> $MNT/etc/network/interfaces
+  [ "$NTP" = no ] || ln -sfn /etc/init.d/ntpd $MNT/etc/runlevels/default/ntpd
   printf 'export LANG=%s\n' "$LOCALE" > $MNT/etc/profile.d/locale.sh
   ln -sf "../usr/share/zoneinfo/$TZONE" $MNT/etc/localtime
   echo "$TZONE" > $MNT/etc/timezone
@@ -263,7 +266,7 @@ timeout: 3
 /LightOS
     protocol: linux
     path: boot():/bzImage
-    cmdline: root=PARTUUID=$ROOTUUID rootwait rw console=ttyS0 console=tty0 quiet
+    cmdline: root=PARTUUID=$ROOTUUID rootwait ro console=ttyS0 console=tty0 quiet
 EOF
   limine bios-install "/dev/$DISK" 1
 

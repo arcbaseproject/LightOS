@@ -1,0 +1,32 @@
+#!/bin/sh
+# Run by light-update after it installs a release's files. Brings older installs up to date.
+# Safe to run again.
+set -e
+/usr/share/lightos/setup-services
+# busybox-openrc runs klogd as this user but no package creates it.
+id klogd >/dev/null 2>&1 || adduser -S -D -H -h /dev/null -s /sbin/nologin klogd
+
+# 0.1.x: rcS read /etc/lightos.conf. 0.2.0 uses OpenRC services and Alpine's config files.
+if [ -f /etc/lightos.conf ]; then
+  KEYMAP= NETWORK=dhcp NTP=no
+  . /etc/lightos.conf
+  [ -n "$KEYMAP" ] && echo "KEYMAP=/usr/share/bkeymaps/$KEYMAP.bmap.gz" > /etc/conf.d/loadkmap
+  [ "$NTP" = yes ] && ln -sfn /etc/init.d/ntpd /etc/runlevels/default/ntpd
+  if [ ! -s /etc/network/interfaces ]; then
+    mkdir -p /etc/network
+    printf 'auto lo\niface lo inet loopback\n' > /etc/network/interfaces
+    [ "$NETWORK" = dhcp ] && printf '\nauto eth0\niface eth0 inet dhcp\n' >> /etc/network/interfaces
+  fi
+  mv /etc/lightos.conf /etc/lightos.conf.old
+fi
+rm -f /etc/init.d/rcS
+
+# fsck needs the root filesystem mounted read-only at boot; OpenRC then remounts it
+# read-write from its fstab entry.
+if ! awk '$2 == "/" { found = 1 } END { exit !found }' /etc/fstab; then
+  partuuid=$(sed -n 's/.*root=PARTUUID=\([^ ]*\).*/\1/p' /proc/cmdline)
+  [ -n "$partuuid" ] && printf 'PARTUUID=%s\t/\text4\trw,relatime\t0 1\n' "$partuuid" >> /etc/fstab
+fi
+if awk '$2 == "/" { found = 1 } END { exit !found }' /etc/fstab; then
+  sed -i 's/ rootwait rw / rootwait ro /' /boot/limine.conf
+fi

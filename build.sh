@@ -9,7 +9,8 @@ cd "$(dirname "$0")"
 V=3.24.4
 SHA=cdaa38cb8de3537967ee5b6c9b6cd00cc962da2b018e6eea48696bb274923012
 T=alpine-minirootfs-$V-x86_64.tar.gz
-PKGS="dialog sfdisk e2fsprogs dosfstools limine tzdata kbd-bkeymaps musl-locales doas doas-sudo-shim"   # what light-install needs
+# OpenRC runs services; the rest is what light-install needs.
+PKGS="openrc busybox-openrc busybox-mdev-openrc ifupdown-ng dialog sfdisk e2fsprogs dosfstools limine tzdata kbd-bkeymaps musl-locales doas doas-sudo-shim"
 R=build/root
 
 mkdir -p dl
@@ -22,6 +23,11 @@ cp /etc/resolv.conf $R/etc/resolv.conf
 DEVS="null zero random urandom"
 for d in $DEVS; do touch $R/dev/$d; mount --bind /dev/$d $R/dev/$d; done
 chroot $R /sbin/apk add --no-cache -q $PKGS
+# busybox-openrc runs klogd as this user but no package creates it.
+chroot $R adduser -S -D -H -h /dev/null -s /sbin/nologin klogd
+# OpenRC's modules service runs modprobe, which fails without this folder; the kernel has no modules.
+KVER=$(cat kernel/linux-7.3.4/include/config/kernel.release)
+mkdir -p $R/lib/modules/$KVER && touch $R/lib/modules/$KVER/modules.dep
 for d in $DEVS; do umount $R/dev/$d; rm $R/dev/$d; done
 rm $R/etc/resolv.conf
 
@@ -34,12 +40,16 @@ sed -i "s/^PRETTY_NAME=.*/PRETTY_NAME=\"LightOS $LV\"/" $R/etc/os-release
 echo "VERSION_ID=$LV" >> $R/etc/os-release
 # Packages LightOS needs; light-update installs any that a new release adds.
 echo "$PKGS" > $R/usr/share/lightos/packages
+printf 'auto lo\niface lo inet loopback\n\nauto eth0\niface eth0 inet dhcp\n' > $R/etc/network/interfaces
+$R/usr/share/lightos/setup-services $R
 # light-install restores these over the live versions below.
 mkdir -p $R/usr/share/lightos/installed/etc
-cp overlay/etc/inittab overlay/etc/motd $R/usr/share/lightos/installed/etc/
+cp overlay/etc/inittab overlay/etc/motd overlay/etc/issue $R/usr/share/lightos/installed/etc/
 
-# Live system: root logs in without a password, motd points at the installer.
-sed -i 's|/sbin/getty |/sbin/getty -n -l /usr/local/sbin/autologin |' $R/etc/inittab
+# Live system: log in as root with password "lightos"; the login screen says so.
+# light-install replaces the password and these files on the installed system.
+echo 'root:lightos' | chroot $R chpasswd
+printf '%s live system (\\l)\n\n  Log in as:  root\n  Password:   lightos\n\n  Then run light-install to install LightOS to a disk.\n\n' "LightOS $LV" > $R/etc/issue
 printf 'LightOS live system. Run light-install to install LightOS to a disk.\n\n' > $R/etc/motd
 ln -s sbin/init $R/init
 
@@ -69,14 +79,15 @@ chroot $R limine bios-install /tmp/lightos.iso >/dev/null
 mv $R/tmp/lightos.iso lightos.iso
 
 # light-update payload: kernel + LightOS files for installed systems. Leaves out the
-# hostname (the user's) and live-only files.
+# hostname (the user's).
 U=build/update
 mkdir -p $U/boot
 cp -a overlay/. $U/
-rm $U/etc/hostname $U/usr/local/sbin/autologin
+rm $U/etc/hostname
 cp $R/etc/os-release $U/etc/
 mkdir -p $U/usr/share/lightos
 cp bzImage $U/boot/bzImage
+mkdir -p $U/lib/modules/$KVER && touch $U/lib/modules/$KVER/modules.dep
 cp bzImage $R/usr/share/lightos/packages $U/usr/share/lightos/
 tar -C $U -czf lightos-update.tar.gz .
 sha256sum lightos.iso lightos-update.tar.gz > SHA256SUMS

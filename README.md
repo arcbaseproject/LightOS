@@ -34,7 +34,7 @@ To leave QEMU, press Ctrl-A, then X.
 
 ## Installing
 
-The live system logs you in as root. Run:
+The live system shows its boot log, then a login prompt. Log in as `root` with password `lightos`, then run:
 
 ```sh
 light-install
@@ -57,7 +57,21 @@ The installer works like archinstall: a main menu lists every setting with its c
 
 Install shows a summary and erases nothing until you confirm. Then it creates three partitions: a 1 MiB BIOS boot partition, a 256 MiB EFI system partition mounted at `/boot`, and an ext4 root. It copies the live system over, applies your settings and installs limine. If a step fails, it shows the end of its log in a private `/tmp/light-install.XXXXXX/` directory and prints the exact path.
 
-The installed system keeps its keyboard, network and NTP settings in `/etc/lightos.conf`. Edit the file to change them.
+The installer's root password replaces `lightos` on the installed system.
+
+## Services
+
+LightOS runs Alpine's OpenRC under busybox init, so services from Alpine packages work as installed:
+
+```sh
+rc-status                    # what's running
+rc-service sshd start        # start a service now
+rc-update add sshd default   # start it at every boot
+```
+
+The boot log shows each service with `[ ok ]` or `[ !! ]` on the screen and the serial port. LightOS enables the same services as a stock Alpine install: mdev, hwclock, fsck, syslog and klogd, networking, seedrng, acpid (the power button shuts down), crond and, if you chose time sync, ntpd.
+
+Settings live in Alpine's usual files: network in `/etc/network/interfaces`, keyboard in `/etc/conf.d/loadkmap`, NTP servers in `/etc/conf.d/ntpd`.
 
 To install on a real machine, write the ISO to a USB stick:
 
@@ -76,7 +90,13 @@ sudo light-update           # install the latest release, then Alpine updates
 
 `light-update` compares `VERSION_ID` in `/etc/os-release` with the latest GitHub release. If the release is newer, it downloads `lightos-update.tar.gz`, checks it against the release's `SHA256SUMS` and installs the new kernel to `/boot` along with LightOS's system files. It then runs `apk upgrade` and refreshes limine. Reboot to start the new kernel.
 
-It never touches your hostname, users, passwords, `fstab` or `/etc/lightos.conf`. Before it replaces any other file in `/etc`, it saves the old copy in `/var/backups/light-update/<old version>/`.
+It never touches your hostname, users, passwords or network settings. Before it replaces any other file in `/etc`, it saves the old copy in `/var/backups/light-update/<old version>/`.
+
+To update a system installed from 0.1.0, first get the current `light-update`, since 0.1.0's copy can't switch to OpenRC:
+
+```sh
+wget -O /usr/local/sbin/light-update https://raw.githubusercontent.com/arcbaseproject/LightOS/main/overlay/usr/local/sbin/light-update
+```
 
 To publish an update: bump `VERSION`, commit and push, run `./build.sh`, then `./release.sh`.
 
@@ -117,7 +137,9 @@ Install with `--user`, or as root. A system-wide install from a normal account n
 | `overlay/usr/local/sbin/light-install` | The installer. |
 | `overlay/usr/local/sbin/light-update` | The updater. |
 | `overlay/usr/local/bin/lpkg` | The package command. |
-| `overlay/etc/init.d/rcS` | Mounts filesystems, sets the hostname and runs DHCP on `eth0`. |
+| `overlay/usr/share/lightos/rc` | Runs OpenRC from `inittab` and shows its log on every console. |
+| `overlay/usr/share/lightos/setup-services` | Enables the standard OpenRC services. |
+| `overlay/usr/share/lightos/post-update` | Run by `light-update` to bring older installs up to date. |
 | `overlay/usr/share/lightos/logo.txt` | The fastfetch logo. |
 
 ## Limits

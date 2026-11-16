@@ -1,5 +1,0 @@
-#!/bin/sh
-# Live system only: getty runs this to log in as root without a password.
-# Clear the screen first so firmware boot text doesn't mix with the prompt.
-printf '\033[H\033[2J'
-exec login -f root

@@ -1,0 +1,29 @@
+#!/bin/sh
+# inittab runs OpenRC through this so the boot and shutdown log shows on every console
+# (screen and serial port), not just /dev/console. Usage: rc RUNLEVEL
+# /dev may not be mounted yet this early; OpenRC accepts it already mounted.
+[ -c /dev/null ] || mount -t devtmpfs devtmpfs /dev
+# /proc/consoles marks /dev/console with a C flag; copy output to the others.
+# Unmount /proc again if we mounted it, so OpenRC mounts and reports it as usual.
+if mountpoint -q /proc; then mounted=; else mount -t proc proc /proc; mounted=yes; fi
+others=$(awk '$0 !~ /\(.*C.*\)/ { print "/dev/" $1 }' /proc/consoles)
+[ -n "$mounted" ] && umount /proc
+
+if [ "$1" = sysinit ]; then
+  . /etc/os-release
+  printf '\033[H\033[2J\nWelcome to \033[1;33m%s\033[0m!\n\n' "$PRETTY_NAME" | tee $others
+fi
+
+# OpenRC drops colors and alignment when its output isn't a terminal, so add them back:
+# green/red status right-aligned at 80 columns, like OpenRC does on a terminal.
+/sbin/openrc "$1" 2>&1 | awk '
+  BEGIN { G = "\033[1;32m"; R = "\033[1;31m"; N = "\033[0m" }
+  {
+    if (match($0, / ?\[ (ok|!!) \]$/)) {
+      txt = substr($0, 1, RSTART - 1); ok = substr($0, RSTART) ~ /ok/
+      pad = 74 - length(txt); if (pad < 1) pad = 1
+      $0 = txt sprintf("%" pad "s", "") (ok ? "[ " G "ok" N " ]" : "[ " R "!!" N " ]")
+    }
+    if (sub(/^ \* /, "")) $0 = " " (/ERROR|[Ff]ailed/ ? R : G) "*" N " " $0
+    print; fflush()
+  }' | tee $others
