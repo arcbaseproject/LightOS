@@ -14,8 +14,14 @@ ZI=/usr/share/zoneinfo
 [ "$(id -u)" = 0 ] || { echo "light-install: run as root" >&2; exit 1; }
 command -v dialog >/dev/null || { echo "light-install: needs dialog (lpkg add dialog)" >&2; exit 1; }
 
+export DIALOGRC=/etc/lightos/dialogrc
+# Draw boxes with Unicode line characters; the DEC line-drawing set breaks on some serial terminals.
+export NCURSES_NO_UTF8_ACS=1
+# A serial console can't report its window size; ask the terminal so dialog uses the full window.
+case $(tty) in /dev/ttyS*) resize >/dev/null ;; esac
+
 # dialog draws on the terminal and prints the answer on stderr; swap so $(D ...) captures it.
-D() { dialog --backtitle "$TITLE" "$@" 3>&1 1>&2 2>&3; }
+D() { dialog --colors --backtitle "$TITLE" "$@" 3>&1 1>&2 2>&3; }
 msg() { D --msgbox "$1" ${2:-7} 60; }
 quit() { clear; echo "light-install: aborted, nothing was changed"; exit 1; }
 
@@ -46,7 +52,7 @@ dumpkmap > /tmp/light-install.us.bmap 2>/dev/null
 set_keymap() {
   set -- us
   for d in $KM/*/; do d=${d%/}; set -- "$@" "${d##*/}"; done
-  lang=$(D --title "Keyboard layout" --no-items --default-item "${KEYMAP%%/*}" --menu "Layout:" 20 40 12 "$@") || return 0
+  lang=$(D --title " Keyboard layout " --no-items --default-item "${KEYMAP%%/*}" --menu "Layout:" 0 0 0 "$@") || return 0
   if [ "$lang" = us ]; then
     KEYMAP=
     loadkmap < /tmp/light-install.us.bmap 2>/dev/null
@@ -55,7 +61,7 @@ set_keymap() {
   set --
   for f in $KM/$lang/*.bmap.gz; do f=${f##*/}; set -- "$@" "${f%.bmap.gz}"; done
   if [ $# -gt 1 ]; then
-    var=$(D --title "Keyboard layout" --no-items --default-item "$lang" --menu "Variant:" 20 40 12 "$@") || return 0
+    var=$(D --title " Keyboard layout " --no-items --default-item "$lang" --menu "Variant:" 0 0 0 "$@") || return 0
   else
     var=$1
   fi
@@ -67,7 +73,7 @@ set_keymap() {
 set_locale() {
   set -- C.UTF-8
   for f in /usr/share/i18n/locales/musl/*; do set -- "$@" "${f##*/}"; done
-  l=$(D --title "Locale" --no-items --default-item "$LOCALE" --menu "System language (LANG):" 20 40 12 "$@") && LOCALE=$l
+  l=$(D --title " Locale " --no-items --default-item "$LOCALE" --menu "System language (LANG):" 0 0 0 "$@") && LOCALE=$l
 }
 
 set_disk() {
@@ -81,19 +87,19 @@ set_disk() {
     set -- "$@" "$n" "$(disksize "$n")  ${model:-disk}"
   done
   [ $# -gt 0 ] || { msg "No usable disk found (1 GiB or larger, not in use)."; return 0; }
-  d=$(D --title "Disk" --default-item "$DISK" --menu "Disk to install LightOS on.\nEverything on it will be erased." 15 64 6 "$@") && DISK=$d
+  d=$(D --title " Disk " --default-item "$DISK" --menu "Disk to install LightOS on.\nEverything on it will be erased." 0 0 0 "$@") && DISK=$d
 }
 
 set_hostname() {
-  while h=$(D --title "Hostname" --inputbox "Name for this computer:" 8 60 "$HOST"); do
+  while h=$(D --title " Hostname " --inputbox "Name for this computer:" 8 60 "$HOST"); do
     case $h in ''|-*|*[!a-zA-Z0-9-]*) msg "Use letters, digits and dashes only." ;; *) HOST=$h; return ;; esac
   done
 }
 
 ask_password() { # label; prints the password, fails on cancel
   while :; do
-    p1=$(D --insecure --title "$1" --passwordbox "Password for $1:" 8 60) || return 1
-    p2=$(D --insecure --title "$1" --passwordbox "Type it again:" 8 60) || return 1
+    p1=$(D --insecure --title " $1 " --passwordbox "Password for $1:" 8 60) || return 1
+    p2=$(D --insecure --title " $1 " --passwordbox "Type it again:" 8 60) || return 1
     if [ -z "$p1" ]; then msg "The password can't be empty."
     elif [ "$p1" != "$p2" ]; then msg "The passwords don't match."
     else echo "$p1"; return 0; fi
@@ -104,15 +110,15 @@ set_rootpw() { p=$(ask_password root) && ROOTPW=$p; }
 
 set_user() {
   if [ -n "$USERNAME" ]; then
-    a=$(D --title "User account" --menu "User: $USERNAME" 10 50 2 change "Change the user" remove "Remove the user") || return 0
+    a=$(D --title " User account " --menu "User: $USERNAME" 0 0 0 change "Change the user" remove "Remove the user") || return 0
     [ "$a" = remove ] && { USERNAME=; USERPW=; return 0; }
   fi
-  while u=$(D --title "User account" --inputbox "Username:" 8 60 "$USERNAME"); do
+  while u=$(D --title " User account " --inputbox "Username:" 8 60 "$USERNAME"); do
     case $u in
       root) msg "Pick a name other than root." ;;
       ''|[!a-z_]*|*[!a-z0-9_-]*) msg "Use lowercase letters, digits, - and _, starting with a letter." ;;
       *) p=$(ask_password "$u") || return 0
-         if D --title "User account" --yesno "Let $u run commands as root with sudo?" 6 50; then USERSUDO=yes; else USERSUDO=no; fi
+         if D --title " User account " --yesno "Let $u run commands as root with sudo?" 6 50; then USERSUDO=yes; else USERSUDO=no; fi
          USERNAME=$u USERPW=$p
          return 0 ;;
     esac
@@ -120,26 +126,26 @@ set_user() {
 }
 
 set_timezone() {
-  r=$(D --title "Timezone" --no-items --default-item "${TZONE%%/*}" --menu "Region:" 20 40 12 \
+  r=$(D --title " Timezone " --no-items --default-item "${TZONE%%/*}" --menu "Region:" 0 0 0 \
     UTC Africa America Antarctica Arctic Asia Atlantic Australia Europe Indian Pacific) || return 0
   [ "$r" = UTC ] && { TZONE=UTC; return 0; }
   # Zone names contain no spaces, so word splitting is safe here.
   # shellcheck disable=SC2046
   set -- $(cd $ZI && find "$r" -type f | sort)
-  t=$(D --title "Timezone" --no-items --default-item "$TZONE" --menu "City:" 20 50 12 "$@") && TZONE=$t
+  t=$(D --title " Timezone " --no-items --default-item "$TZONE" --menu "City:" 0 0 0 "$@") && TZONE=$t
 }
 
 set_ntp() {
-  if D --title "Time sync" --yesno "Sync the clock over the internet (NTP) at boot?" 6 54; then NTP=yes; else NTP=no; fi
+  if D --title " Time sync " --yesno "Sync the clock over the internet (NTP) at boot?" 6 54; then NTP=yes; else NTP=no; fi
 }
 
 set_network() {
-  n=$(D --title "Network" --default-item "$NETWORK" --menu "Network setup:" 10 56 2 \
+  n=$(D --title " Network " --default-item "$NETWORK" --menu "Network setup:" 0 0 0 \
     dhcp "Wired, automatic (DHCP on eth0)" none "No network") && NETWORK=$n
 }
 
 set_extra() {
-  while e=$(D --title "Extra packages" --inputbox "Alpine packages to install, separated by spaces.\nNeeds a network connection during install." 9 64 "$EXTRA"); do
+  while e=$(D --title " Extra packages " --inputbox "Alpine packages to install, separated by spaces.\nNeeds a network connection during install." 9 64 "$EXTRA"); do
     case $e in *[!a-z0-9._+\ -]*) msg "Package names use lowercase letters, digits and . _ + -" ;; *) EXTRA=$(echo $e); return ;; esac
   done
 }
@@ -248,17 +254,17 @@ install() {
   if [ -n "$EXTRA" ] && [ "$NETWORK" = none ]; then
     msg "Extra packages need the network. Set Network to dhcp or clear the package list." 8; return
   fi
-  D --title "Confirm" --defaultno --yes-label "Install" --no-label "Back" --yesno \
-    "$(summary)\n\nALL DATA ON /dev/$DISK WILL BE ERASED.\n\nInstall LightOS now?" 20 64 || return
+  D --title " Confirm " --cr-wrap --no-collapse --defaultno --yes-label "Install" --no-label "Back" --yesno \
+    "\n$(summary)\n\n\Z1\ZbALL DATA ON /dev/$DISK WILL BE ERASED.\Zn\n\nInstall LightOS now?" 0 0 || return
 
   : > $LOG
-  ( ( do_install ); echo $? > $RC ) | D --title "Installing" --gauge "Starting" 8 64 0
+  ( ( do_install ); echo $? > $RC ) | D --title " Installing " --gauge "Starting" 8 64 0
   if [ "$(cat $RC)" != 0 ]; then
     cleanup 2>/dev/null
-    D --title "Installation failed" --msgbox "Last lines of $LOG:\n\n$(tail -n 12 $LOG)" 20 76
+    D --title " Installation failed " --msgbox "Last lines of $LOG:\n\n$(tail -n 12 $LOG)" 20 76
     clear; echo "light-install: failed, see $LOG"; exit 1
   fi
-  if D --title "Done" --yesno "LightOS is installed on /dev/$DISK.\n\nRemove the installation media, then reboot.\nReboot now?" 10 60; then
+  if D --title " Done " --yesno "LightOS is installed on /dev/$DISK.\n\nRemove the installation media, then reboot.\nReboot now?" 10 60; then
     clear; reboot; exit 0
   fi
   clear; echo "light-install: done. Reboot to start LightOS."; exit 0
@@ -267,10 +273,11 @@ install() {
 # --- Main menu ---
 item="Disk *"
 while :; do
-  dval="not set"; [ -n "$DISK" ] && dval="/dev/$DISK ($(disksize "$DISK"))"
-  pval="not set"; [ -n "$ROOTPW" ] && pval=set
-  item=$(D --title "$TITLE" --cancel-label "Abort" --default-item "$item" --menu \
-    "Set each item, then choose Install. Items marked * are required." 22 70 13 \
+  unset_='\Z1\Zbnot set\Zn'
+  dval=$unset_; [ -n "$DISK" ] && dval="/dev/$DISK ($(disksize "$DISK"))"
+  pval=$unset_; [ -n "$ROOTPW" ] && pval=set
+  item=$(D --title " Main menu " --cancel-label "Abort" --default-item "$item" --menu \
+    "\nSet each item, then choose \ZbInstall\Zn.\nItems marked * are required." 21 60 12 \
     "Keyboard layout" "${KEYMAP:-us}" \
     "Locale" "$LOCALE" \
     "Disk *" "$dval" \
@@ -295,6 +302,6 @@ while :; do
     Network) set_network ;;
     "Extra packages") set_extra ;;
     Install) install ;;
-    Abort) D --title "Abort" --yesno "Quit the installer? Nothing has been changed." 6 50 && quit; item=Install ;;
+    Abort) D --title " Abort " --yesno "Quit the installer? Nothing has been changed." 6 50 && quit; item=Install ;;
   esac
 done
