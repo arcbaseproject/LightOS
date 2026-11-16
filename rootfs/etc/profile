@@ -1,2 +1,2 @@
 export PS1="\u@\h:\w# "
-export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+export PATH=/root/opt/bin:/usr/local/bin:/bin:/sbin:/usr/bin:/usr/sbin

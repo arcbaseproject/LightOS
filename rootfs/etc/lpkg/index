@@ -1,0 +1,2 @@
+jq 1.8.2 https://github.com/arcbaseproject/LightOS/releases/download/packages/jq-1.8.2.tar.gz 8640c8ea4e19171e6daf927cc01bd0b1582e0d31ebfcc574d300e4ae54b12f42
+lua 5.5.1 https://github.com/arcbaseproject/LightOS/releases/download/packages/lua-5.5.1.tar.gz 50fece40b6bd7336574f036677cb04de8adf48efb6027a6c5ef5237658190556
