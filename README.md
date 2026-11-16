@@ -1,13 +1,15 @@
 # LightOS
 
-LightOS is a small Linux distribution: a 2.7 MB kernel and a busybox userland that boots from RAM. You get a login prompt, DHCP networking, and a disk that keeps your files in `/root` across reboots.
+LightOS is a small Linux distribution. It pairs a 2.7 MB custom kernel with Alpine Linux's userland, so you install software from Alpine's 28,000 packages with `apk`. The system runs from an ext4 disk, and everything you install or change stays across reboots.
+
+A busybox-only live system boots from the ISO and runs from RAM.
 
 ## Requirements
 
 Arch Linux package names:
 
 ```
-base-devel bc flex bison libelf qemu-system-x86 cpio xorriso limine
+base-devel bc flex bison libelf qemu-system-x86 cpio xorriso limine fakeroot
 ```
 
 Fetch busybox and Linux into the repo folder:
@@ -22,60 +24,58 @@ mkdir kernel && curl -L https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.3.4
 ## Build and run
 
 ```sh
-make -C busybox && make -C busybox CONFIG_PREFIX=../rootfs install
+make -C busybox                     # disk.sh uses it to hash the root password
 ./kernel.sh                         # builds bzImage
-ROOT_PASSWORD=yourpass ./build.sh   # packs rootfs into initramfs.cpio.gz
+ROOT_PASSWORD=yourpass ./disk.sh    # builds disk.img
 ./run.sh                            # boots in QEMU
 ```
 
-Log in as `root`. If you leave `ROOT_PASSWORD` unset, `build.sh` uses `lightos` and prints a warning.
+Log in as `root`. If you leave `ROOT_PASSWORD` unset, `disk.sh` uses `lightos` and prints a warning.
 
 To leave QEMU, press Ctrl-A, then X. Type `poweroff` to unmount the disk and shut down.
+
+`disk.sh` refuses to touch an existing `disk.img`. Delete the file yourself to start over, and you lose everything on it.
+
+## Packages
+
+```sh
+apk update
+apk add python3 htop
+apk del htop
+apk search editor
+```
+
+Alpine's [package search](https://pkgs.alpinelinux.org/packages) lists what you can install. apk checks Alpine's signatures on every package.
 
 ## Bootable ISO
 
 ```sh
-./iso.sh
+make -C busybox CONFIG_PREFIX=../rootfs install
+./build.sh    # packs rootfs/ into initramfs.cpio.gz
+./iso.sh      # writes lightos.iso
 ```
 
-`iso.sh` writes `lightos.iso`, which boots on BIOS and UEFI machines through limine.
-
-## Packages
-
-`lpkg` installs static packages into `/root/opt`, which lives on the disk and survives reboots.
-
-```sh
-lpkg avail          # packages in the index
-lpkg install lua jq
-lpkg list
-lpkg remove jq
-```
-
-The package index, `/etc/lpkg/index`, ships inside the image with a sha256 for each package. `lpkg` refuses any download whose checksum doesn't match, which makes up for busybox `wget` skipping certificate checks.
-
-To add a package, write a recipe in `packages/build.sh` and run it. The script builds each tarball into `packages/out/` and rewrites the index. Upload the tarballs to the `packages` GitHub release, then rebuild the image.
+The ISO boots the busybox live system on BIOS and UEFI machines through limine. It has no apk. Attach a virtio disk and the live system mounts it over `/root`.
 
 ## Layout
 
 | Path | Purpose |
 |------|---------|
-| `busybox.config` | Busybox build config: static, with init, login, DHCP and HTTPS `wget`. |
 | `kernel.sh` | Starts from `tinyconfig` and enables only the drivers LightOS uses. Builds no modules. |
-| `build.sh` | Writes `/etc/shadow` and packs `rootfs/` into `initramfs.cpio.gz`. |
-| `run.sh` | Boots QEMU with a virtio disk (`disk.img`, 256 MB, created on first run) and virtio networking. |
+| `disk.sh` | Builds a 2 GB `disk.img` from Alpine 3.24 minirootfs plus LightOS's boot files and root password. |
+| `run.sh` | Boots `disk.img` in QEMU with virtio networking. |
+| `busybox.config` | Busybox config for the live system: static, with init, login, DHCP and HTTPS `wget`. |
+| `build.sh` | Packs `rootfs/` into the live system's `initramfs.cpio.gz`. |
 | `iso.sh` | Builds `lightos.iso`. |
-| `packages/build.sh` | Builds package tarballs and the index. |
-| `rootfs/usr/local/bin/lpkg` | The package manager. |
-| `rootfs/etc/init.d/rcS` | Mounts filesystems, runs DHCP on `eth0`, and mounts the disk over `/root`. |
-| `rootfs/etc/inittab` | Starts `rcS` and a login prompt on the console. |
+| `rootfs/etc/init.d/rcS` | Mounts filesystems and runs DHCP on `eth0`. Both systems use it. |
+| `rootfs/etc/inittab` | Starts `rcS` and login prompts on `tty1` and `ttyS0`. |
 
 ## Limits
 
-- Changes outside `/root` disappear at reboot, `passwd` included. Set the password at build time.
-- Busybox `wget` speaks HTTPS but skips certificate checks.
-- The kernel has drivers for virtio and Intel e1000 hardware only. On a real PC you get a shell with no disk.
+- The kernel has drivers for virtio and Intel e1000 hardware only. On a real PC the live system gets no disk.
+- The live system loses changes outside `/root` at reboot, and its busybox `wget` skips certificate checks.
 - `poweroff -f` skips unmounting the disk. Use `poweroff`.
 
 ## License
 
-GPL-2.0. See [LICENSE](LICENSE). Busybox and Linux carry their own GPL-2.0 licenses.
+GPL-2.0. See [LICENSE](LICENSE). Busybox and Linux carry their own GPL-2.0 licenses. Alpine packages keep their own licenses.
