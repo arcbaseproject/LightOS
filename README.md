@@ -10,10 +10,14 @@ Arch Linux package names:
 base-devel bc flex bison libelf qemu-system-x86 cpio xorriso limine
 ```
 
-You also need the LightOS sources:
+Fetch busybox and Linux into the repo folder:
 
-- `busybox/`: busybox source, built static (`CONFIG_STATIC=y`).
-- `kernel/linux-7.3.4/`: Linux 7.3.4 source from kernel.org.
+```sh
+git clone https://git.busybox.net/busybox
+git -C busybox checkout 8d79a6335cc5bf052635c1a22a3f76918f682bdf
+cp busybox.config busybox/.config
+mkdir kernel && curl -L https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.3.4.tar.xz | tar xJ -C kernel
+```
 
 ## Build and run
 
@@ -40,6 +44,7 @@ To leave QEMU, press Ctrl-A, then X. Type `poweroff` to unmount the disk and shu
 
 | Path | Purpose |
 |------|---------|
+| `busybox.config` | Busybox build config: static, with init, login, DHCP and HTTPS `wget`. |
 | `kernel.sh` | Starts from `tinyconfig` and enables only the drivers LightOS uses. Builds no modules. |
 | `build.sh` | Writes `/etc/shadow` and packs `rootfs/` into `initramfs.cpio.gz`. |
 | `run.sh` | Boots QEMU with a virtio disk (`disk.img`, 256 MB, created on first run) and virtio networking. |
