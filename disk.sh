@@ -16,7 +16,9 @@ rm -rf disk_root
 # fakeroot keeps root ownership from the tarball through to mke2fs.
 fakeroot sh -c "
   mkdir disk_root && tar -xzf dl/$T -C disk_root
-  cp rootfs/etc/inittab rootfs/etc/issue disk_root/etc/
+  # Replace the os-release symlink with a file: apk protects /etc files on upgrade.
+  rm disk_root/etc/os-release
+  cp rootfs/etc/inittab rootfs/etc/issue rootfs/etc/os-release disk_root/etc/
   echo 'Welcome to LightOS. Install software with: apk add NAME' > disk_root/etc/motd
   mkdir -p disk_root/etc/init.d && cp rootfs/etc/init.d/rcS disk_root/etc/init.d/rcS
   sed -i 's|^root:[^:]*:|root:$HASH:|' disk_root/etc/shadow

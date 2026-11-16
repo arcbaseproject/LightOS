@@ -1,0 +1,6 @@
+NAME="LightOS"
+ID=lightos
+ID_LIKE=alpine
+PRETTY_NAME="LightOS"
+HOME_URL="https://github.com/arcbaseproject/LightOS"
+BUG_REPORT_URL="https://github.com/arcbaseproject/LightOS/issues"
