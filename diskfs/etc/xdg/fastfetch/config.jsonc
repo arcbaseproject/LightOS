@@ -1,0 +1,13 @@
+{
+  "logo": {
+    "type": "file",
+    "source": "/usr/share/lightos/logo.txt",
+    "color": { "1": "yellow", "2": "white" }
+  },
+  // A config without "modules" shows no info, so list fastfetch's defaults.
+  "modules": [
+    "title", "separator", "os", "host", "kernel", "uptime", "packages", "shell",
+    "terminal", "cpu", "gpu", "memory", "swap", "disk", "localip", "locale",
+    "break", "colors"
+  ]
+}

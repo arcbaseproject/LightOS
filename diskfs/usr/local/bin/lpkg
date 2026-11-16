@@ -1,0 +1,3 @@
+#!/bin/sh
+# lpkg: LightOS package manager, a front end for Alpine's apk (same commands: add, del, update, upgrade, search).
+exec apk "$@"

@@ -19,7 +19,8 @@ fakeroot sh -c "
   # Replace the os-release symlink with a file: apk protects /etc files on upgrade.
   rm disk_root/etc/os-release
   cp rootfs/etc/inittab rootfs/etc/issue rootfs/etc/os-release disk_root/etc/
-  echo 'Welcome to LightOS. Install software with: apk add NAME' > disk_root/etc/motd
+  cp -a diskfs/. disk_root/
+  echo 'Welcome to LightOS. Install software with: lpkg add NAME' > disk_root/etc/motd
   mkdir -p disk_root/etc/init.d && cp rootfs/etc/init.d/rcS disk_root/etc/init.d/rcS
   sed -i 's|^root:[^:]*:|root:$HASH:|' disk_root/etc/shadow
   mke2fs -q -t ext4 -L lightos -d disk_root disk.img 2G
