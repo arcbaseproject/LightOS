@@ -1,0 +1,20 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax-check shell scripts
+        run: |
+          for f in *.sh overlay/usr/local/sbin/* overlay/usr/local/bin/lpkg \
+                   overlay/usr/share/lightos/rc overlay/usr/share/lightos/setup-services \
+                   overlay/usr/share/lightos/post-update overlay/usr/share/lightos/vnc-session \
+                   overlay/etc/init.d/lightos-vnc; do
+            sh -n "$f" || { echo "::error file=$f::syntax error"; exit 1; }
+          done
+      - name: ShellCheck (errors only)
+        run: shellcheck -S error -s sh *.sh overlay/usr/local/sbin/* overlay/usr/local/bin/lpkg overlay/usr/share/lightos/rc overlay/usr/share/lightos/setup-services overlay/usr/share/lightos/post-update overlay/usr/share/lightos/vnc-session
+      - name: Installer tests
+        run: python3 tests/test-installer.py
