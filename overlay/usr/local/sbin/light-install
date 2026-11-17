@@ -66,6 +66,7 @@ TZONE=UTC
 NTP=yes
 NETWORK=dhcp
 EXTRA=
+DESKTOP=none
 
 # Save the current (US) layout so choosing "us" again can restore it. VT only, not serial.
 dumpkmap > "$WORK/us.bmap" 2>/dev/null
@@ -168,6 +169,13 @@ set_network() {
     dhcp "Wired, automatic (DHCP on eth0)" none "No network") && NETWORK=$n
 }
 
+set_desktop() {
+  d=$(D --title " Desktop " --default-item "$DESKTOP" --menu "A desktop you reach over VNC (port 5901).\nIt runs as your user account and needs the network to download.\nThe VNC password is the user's password; VNC only checks its first 8 characters." 0 0 0 \
+    none "Console only" \
+    xfce "XFCE: full desktop" \
+    jwm "JWM: light window manager") && DESKTOP=$d
+}
+
 set_extra() {
   while e=$(D --title " Extra packages " --inputbox "Alpine packages to install, separated by spaces.\nNeeds a network connection during install." 9 64 "$EXTRA"); do
     case $e in *[!a-z0-9._+\ -]*) msg "Package names use lowercase letters, digits and . _ + -" ;; *) EXTRA=$(echo $e); return ;; esac
@@ -184,6 +192,7 @@ summary() {
   echo "Timezone:         $TZONE"
   echo "Time sync (NTP):  $NTP"
   echo "Network:          $NETWORK"
+  echo "Desktop:          $DESKTOP"
   echo "Extra packages:   ${EXTRA:-none}"
 }
 
@@ -258,6 +267,24 @@ do_install() {
     chroot $MNT apk add $EXTRA
   fi
 
+  if [ "$DESKTOP" != none ]; then
+    progress 72 "Installing the $DESKTOP desktop"
+    cp /etc/resolv.conf $MNT/etc/resolv.conf
+    case $DESKTOP in
+      xfce) pkgs="xfce4 xfce4-terminal" cmd=startxfce4 ;;
+      jwm) pkgs="jwm xterm" cmd=jwm ;;
+    esac
+    # shellcheck disable=SC2086
+    chroot $MNT apk add $pkgs tigervnc dbus dbus-x11 font-dejavu
+    ln -sfn /etc/init.d/dbus $MNT/etc/runlevels/default/dbus
+    ln -sfn /etc/init.d/lightos-vnc $MNT/etc/runlevels/default/lightos-vnc
+    sed -i "s/^VNC_USER=.*/VNC_USER=\"$USERNAME\"/; s/^DESKTOP=.*/DESKTOP=\"$cmd\"/" $MNT/etc/conf.d/lightos-vnc
+    mkdir -p "$MNT/home/$USERNAME/.vnc"
+    printf '%s\n' "$USERPW" | chroot $MNT vncpasswd -f > "$MNT/home/$USERNAME/.vnc/passwd"
+    chmod 600 "$MNT/home/$USERNAME/.vnc/passwd"
+    chroot $MNT chown -R "$USERNAME:$USERNAME" "/home/$USERNAME/.vnc"
+  fi
+
   progress 85 "Installing the bootloader"
   cp /usr/share/lightos/bzImage /usr/share/limine/limine-bios.sys $MNT/boot/
   mkdir -p $MNT/boot/EFI/BOOT
@@ -285,8 +312,11 @@ install() {
   if [ -n "$USERNAME" ] && ! user_available "$USERNAME"; then
     msg "That user or group already exists. Choose another username."; return
   fi
-  if [ -n "$EXTRA" ] && [ "$NETWORK" = none ]; then
-    msg "Extra packages need the network. Set Network to dhcp or clear the package list." 8; return
+  if [ "$DESKTOP" != none ] && [ -z "$USERNAME" ]; then
+    msg "The desktop runs as a user account. Add one under User account." 8; return
+  fi
+  if { [ -n "$EXTRA" ] || [ "$DESKTOP" != none ]; } && [ "$NETWORK" = none ]; then
+    msg "Extra packages and the desktop need the network. Set Network to dhcp." 8; return
   fi
   D --title " Confirm " --cr-wrap --no-collapse --defaultno --yes-label "Install" --no-label "Back" --yesno \
     "\n$(summary)\n\n\Z1\ZbALL DATA ON /dev/$DISK WILL BE ERASED.\Zn\n\nInstall LightOS now?" 0 0 || return
@@ -311,7 +341,7 @@ while :; do
   dval=$unset_; [ -n "$DISK" ] && dval="/dev/$DISK ($(disksize "$DISK"))"
   pval=$unset_; [ -n "$ROOTPW" ] && pval=set
   item=$(D --title " Main menu " --cancel-label "Abort" --default-item "$item" --menu \
-    "\nSet each item, then choose \ZbInstall\Zn.\nItems marked * are required." 21 60 12 \
+    "\nSet each item, then choose \ZbInstall\Zn.\nItems marked * are required." 22 60 13 \
     "Keyboard layout" "${KEYMAP:-us}" \
     "Locale" "$LOCALE" \
     "Disk *" "$dval" \
@@ -321,6 +351,7 @@ while :; do
     "Timezone" "$TZONE" \
     "Time sync (NTP)" "$NTP" \
     "Network" "$NETWORK" \
+    "Desktop" "$DESKTOP" \
     "Extra packages" "${EXTRA:-none}" \
     "Install" "" \
     "Abort" "") || item=Abort
@@ -334,6 +365,7 @@ while :; do
     Timezone) set_timezone ;;
     "Time sync (NTP)") set_ntp ;;
     Network) set_network ;;
+    Desktop) set_desktop ;;
     "Extra packages") set_extra ;;
     Install) install ;;
     Abort) D --title " Abort " --yesno "Quit the installer? Nothing has been changed." 6 50 && quit; item=Install ;;

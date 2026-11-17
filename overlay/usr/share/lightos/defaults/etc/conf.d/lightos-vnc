@@ -1,0 +1,11 @@
+# Settings for the lightos-vnc service: a desktop you reach over VNC on port 5901.
+# Turn it on with: rc-update add lightos-vnc default && rc-service lightos-vnc start
+
+# User whose desktop it is. As that user, set the VNC password with: vncpasswd
+VNC_USER=""
+# Desktop to run: startxfce4 (XFCE) or jwm (JWM)
+DESKTOP="startxfce4"
+GEOMETRY="1280x800"
+# "all" accepts connections from the network; "localhost" only from this machine,
+# for use over an SSH tunnel. VNC itself is not encrypted.
+LISTEN="all"

@@ -1,0 +1,33 @@
+#!/sbin/openrc-run
+# A desktop over VNC: Xvnc on display :1 (port 5901) running DESKTOP as VNC_USER.
+# Settings: /etc/conf.d/lightos-vnc
+
+name="LightOS VNC desktop"
+supervisor=supervise-daemon
+command=/usr/share/lightos/vnc-session
+command_args="${LISTEN:-all} ${GEOMETRY:-1280x800} ${DESKTOP:-startxfce4}"
+command_user="${VNC_USER}"
+respawn_delay=5
+respawn_max=5
+
+depend() {
+	need localmount
+	use dbus net
+	after dbus
+}
+
+start_pre() {
+	if [ -z "$VNC_USER" ]; then
+		eerror "Set VNC_USER in /etc/conf.d/lightos-vnc"
+		return 1
+	fi
+	home=$(awk -F: -v u="$VNC_USER" '$1 == u { print $6 }' /etc/passwd)
+	if [ -z "$home" ]; then
+		eerror "No such user: $VNC_USER"
+		return 1
+	fi
+	if [ ! -s "$home/.vnc/passwd" ]; then
+		eerror "No VNC password for $VNC_USER. As $VNC_USER, run: vncpasswd"
+		return 1
+	fi
+}

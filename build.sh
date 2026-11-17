@@ -34,6 +34,7 @@ rm $R/etc/resolv.conf
 # The os-release symlink points into a package file; a real file in /etc survives apk upgrades.
 rm $R/etc/os-release
 cp -a overlay/. $R/
+cp -a $R/usr/share/lightos/defaults/etc/. $R/etc/
 cp bzImage $R/usr/share/lightos/bzImage
 LV=$(cat VERSION)
 sed -i "s/^PRETTY_NAME=.*/PRETTY_NAME=\"LightOS $LV\"/" $R/etc/os-release

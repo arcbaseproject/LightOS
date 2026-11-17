@@ -3,6 +3,11 @@
 # Safe to run again.
 set -e
 /usr/share/lightos/setup-services
+# Default config files (in /usr/share/lightos/defaults): install one when it's missing or isn't
+# LightOS's (for example Alpine's package default), and keep it otherwise, since you may have edited it.
+(cd /usr/share/lightos/defaults && find etc -type f) | while read -r f; do
+  grep -qi lightos "/$f" 2>/dev/null || { mkdir -p "/${f%/*}"; cp "/usr/share/lightos/defaults/$f" "/$f"; }
+done
 # busybox-openrc runs klogd as this user but no package creates it.
 id klogd >/dev/null 2>&1 || adduser -S -D -H -h /dev/null -s /sbin/nologin klogd
 

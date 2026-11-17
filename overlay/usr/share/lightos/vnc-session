@@ -1,0 +1,28 @@
+#!/bin/sh
+# Run by the lightos-vnc service as the desktop user: Xvnc on display :1, then the desktop.
+# Usage: vnc-session all|localhost GEOMETRY DESKTOP-COMMAND...
+listen=$1 geometry=$2; shift 2
+HOME=$(awk -F: -v u="$(id -un)" '$1 == u { print $6 }' /etc/passwd)
+export HOME
+cd "$HOME" || exit 1
+mkdir -p .vnc
+[ "$listen" = localhost ] && local=yes || local=no
+
+Xvnc :1 -geometry "$geometry" -rfbauth "$HOME/.vnc/passwd" -localhost "$local" >"$HOME/.vnc/xvnc.log" 2>&1 &
+xvnc=$!
+session=
+trap 'kill $session $xvnc 2>/dev/null; exit 0' INT TERM
+trap 'kill $session $xvnc 2>/dev/null' EXIT
+
+# Wait up to 10 seconds for Xvnc to accept connections.
+i=0
+until [ -S /tmp/.X11-unix/X1 ]; do
+  kill -0 $xvnc 2>/dev/null || { echo "Xvnc exited; see $HOME/.vnc/xvnc.log" >&2; exit 1; }
+  i=$((i + 1)); [ $i -le 50 ] || { echo "Xvnc didn't start" >&2; exit 1; }
+  sleep 0.2
+done
+
+export DISPLAY=:1
+dbus-launch --exit-with-session "$@" >"$HOME/.vnc/session.log" 2>&1 &
+session=$!
+wait $session
