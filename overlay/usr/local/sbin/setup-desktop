@@ -1,0 +1,95 @@
+#!/bin/sh
+# setup-desktop: install a desktop you reach over VNC (port 5901), like Alpine's setup-desktop.
+#   setup-desktop                              menu
+#   setup-desktop [--no-start] DESKTOP USER    no menu; reads the VNC password from stdin
+#   setup-desktop --list                       desktops, one "name|description" per line
+# --no-start skips starting services, for light-install, which runs this inside the new system.
+
+# name|description|packages|session command
+DESKTOPS="xfce|XFCE: full desktop|xfce4 xfce4-terminal|startxfce4
+lxqt|LXQt: light Qt desktop|lxqt-desktop|startlxqt
+mate|MATE: classic desktop|mate-desktop-environment|mate-session
+jwm|JWM: minimal window manager|jwm xterm|jwm"
+COMMON="tigervnc dbus dbus-x11 font-dejavu"
+CONF=/etc/conf.d/lightos-vnc
+
+die() { echo "setup-desktop: $*" >&2; exit 1; }
+field() { printf '%s\n' "$DESKTOPS" | awk -F'|' -v d="$1" -v n="$2" '$1 == d { print $n }'; }
+home_of() { awk -F: -v u="$1" '$1 == u { print $6 }' /etc/passwd; }
+
+# Install DESKTOP for USER with VNC password PASSWORD; START=yes also starts it now.
+setup() {
+  desktop=$1 user=$2 password=$3 start=$4
+  pkgs=$(field "$desktop" 3)
+  [ -n "$pkgs" ] || die "unknown desktop '$desktop' (try: setup-desktop --list)"
+  home=$(home_of "$user")
+  [ -n "$home" ] || die "no such user: $user"
+  [ -n "$password" ] || die "empty VNC password"
+
+  echo "Installing $(field "$desktop" 2)"
+  # shellcheck disable=SC2086
+  apk add $pkgs $COMMON || die "package install failed"
+
+  [ -f $CONF ] || cp /usr/share/lightos/defaults$CONF $CONF
+  sed -i "s/^VNC_USER=.*/VNC_USER=\"$user\"/; s/^DESKTOP=.*/DESKTOP=\"$(field "$desktop" 4)\"/" $CONF
+  mkdir -p "$home/.vnc"
+  printf '%s\n' "$password" | vncpasswd -f > "$home/.vnc/passwd"
+  chmod 600 "$home/.vnc/passwd"
+  chown -R "$user:$(id -gn "$user")" "$home/.vnc"
+  ln -sfn /etc/init.d/dbus /etc/runlevels/default/dbus
+  ln -sfn /etc/init.d/lightos-vnc /etc/runlevels/default/lightos-vnc
+
+  if [ "$start" = yes ]; then
+    rc-service dbus start
+    rc-service lightos-vnc restart
+    ip=$(ip -4 -o addr show scope global 2>/dev/null | awk '{ sub(/\/.*/, "", $4); print $4; exit }')
+    echo
+    echo "Desktop running. Connect with a VNC viewer to ${ip:-this machine}:5901"
+    echo "(in QEMU: start the VM with VNC=1 ./run.sh, then vncviewer localhost:5901)."
+  fi
+}
+
+[ "$1" = --list ] && { printf '%s\n' "$DESKTOPS" | cut -d'|' -f1,2; exit 0; }
+[ "$(id -u)" = 0 ] || die "run as root: sudo setup-desktop"
+
+if [ $# -gt 0 ]; then
+  start=yes
+  [ "$1" = --no-start ] && { start=no; shift; }
+  [ $# = 2 ] || die "usage: setup-desktop [--no-start] DESKTOP USER  (VNC password on stdin)"
+  read -r password
+  setup "$1" "$2" "$password" $start
+  exit 0
+fi
+
+# --- Menu ---
+command -v dialog >/dev/null || die "needs dialog: lpkg add dialog"
+export DIALOGRC=/etc/lightos/dialogrc NCURSES_NO_UTF8_ACS=1
+D() { dialog --colors --backtitle "LightOS Desktop Setup" "$@" 3>&1 1>&2 2>&3; }
+quit() { clear; echo "setup-desktop: cancelled, nothing was changed"; exit 1; }
+
+set --
+while IFS='|' read -r name desc _; do set -- "$@" "$name" "$desc"; done <<EOF
+$DESKTOPS
+EOF
+desktop=$(D --title " Desktop " --menu "Desktop to install. You reach it over VNC on port 5901." 0 0 0 "$@") || quit
+
+set --
+for u in $(awk -F: '$3 >= 1000 && $3 < 60000 { print $1 }' /etc/passwd); do set -- "$@" "$u" ""; done
+if [ $# = 0 ]; then
+  D --msgbox "The desktop runs as a normal user, and there isn't one.\nCreate one first: adduser NAME" 8 60
+  quit
+fi
+user=$(D --title " User " --menu "User whose desktop it is:" 0 0 0 "$@") || quit
+
+while :; do
+  p1=$(D --insecure --title " VNC password " --passwordbox "Password for VNC.\nVNC only checks the first 8 characters." 10 60) || quit
+  p2=$(D --insecure --title " VNC password " --passwordbox "Type it again:" 8 60) || quit
+  if [ -z "$p1" ]; then D --msgbox "The password can't be empty." 6 40
+  elif [ "$p1" != "$p2" ]; then D --msgbox "The passwords don't match." 6 40
+  else break; fi
+done
+
+D --title " Confirm " --yes-label "Install" --no-label "Cancel" --yesno \
+  "Install $(field "$desktop" 2)\nfor $user, reachable over VNC on port 5901?\n\nThis downloads several hundred MB." 10 64 || quit
+clear
+setup "$desktop" "$user" "$p1" yes

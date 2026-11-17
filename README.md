@@ -53,7 +53,7 @@ The installer works like archinstall: a main menu lists every setting with its c
 | Timezone | Region, then city. |
 | Time sync (NTP) | Busybox `ntpd` at boot, against `pool.ntp.org`. |
 | Network | Wired DHCP on `eth0`, or none. |
-| Desktop | None, XFCE or JWM, reached over VNC. Needs a user account and the network. |
+| Desktop | None, XFCE, LXQt, MATE or JWM, reached over VNC. Needs a user account and the network. |
 | Extra packages | Alpine packages to install along with the system. Needs a network connection. |
 
 Install shows a summary and erases nothing until you confirm. Then it creates three partitions: a 1 MiB BIOS boot partition, a 256 MiB EFI system partition mounted at `/boot`, and an ext4 root. It copies the live system over, applies your settings and installs limine. If a step fails, it shows the end of its log in a private `/tmp/light-install.XXXXXX/` directory and prints the exact path.
@@ -103,18 +103,17 @@ To publish an update: bump `VERSION`, commit and push, run `./build.sh`, then `.
 
 ## Desktop over VNC
 
-Pick XFCE or JWM under Desktop in `light-install`, or set it up later:
+Pick a desktop under Desktop in `light-install`, or add one later:
 
 ```sh
-sudo lpkg add xfce4 xfce4-terminal tigervnc dbus dbus-x11 font-dejavu
-vncpasswd                                  # as your user
-sudo vi /etc/conf.d/lightos-vnc            # set VNC_USER to your user
-sudo rc-update add dbus default
-sudo rc-update add lightos-vnc default
-sudo rc-service lightos-vnc start
+sudo setup-desktop
 ```
 
-The `lightos-vnc` service runs `Xvnc` on port 5901 with your desktop and restarts it if it crashes. In QEMU, start the VM with `VNC=1 ./run.sh` to forward port 5901, then connect from your computer with `vncviewer localhost:5901`. VNC only checks the first 8 characters of a password, and its traffic isn't encrypted. Off your own machine, set `LISTEN="localhost"` in `/etc/conf.d/lightos-vnc` and connect through an SSH tunnel.
+`setup-desktop` asks for a desktop (XFCE, LXQt, MATE or JWM), the user it runs as, and a VNC password. It then installs the desktop, `tigervnc` and `dbus` and starts the `lightos-vnc` service. Without the menu: `echo PASSWORD | sudo setup-desktop xfce USER`.
+
+`lightos-vnc` runs `Xvnc` on port 5901 with the desktop and restarts it if it crashes. Its settings are in `/etc/conf.d/lightos-vnc`. In QEMU, start the VM with `VNC=1 ./run.sh` to forward port 5901, then connect from your computer with `vncviewer localhost:5901`.
+
+VNC only checks the first 8 characters of a password, and its traffic isn't encrypted. Off your own machine, set `LISTEN="localhost"` in `/etc/conf.d/lightos-vnc` and connect through an SSH tunnel.
 
 ## Containers
 
@@ -163,6 +162,7 @@ Install with `--user`, or as root. A system-wide install from a normal account n
 | `overlay/` | Files copied onto the system as-is. |
 | `overlay/usr/local/sbin/light-install` | The installer. |
 | `overlay/usr/local/sbin/light-update` | The updater. |
+| `overlay/usr/local/sbin/setup-desktop` | Installs a VNC desktop. |
 | `overlay/usr/local/bin/lpkg` | The package command. |
 | `overlay/usr/share/lightos/rc` | Runs OpenRC from `inittab` and shows its log on every console. |
 | `overlay/usr/share/lightos/setup-services` | Enables the standard OpenRC services. |

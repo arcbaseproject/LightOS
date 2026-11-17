@@ -170,10 +170,11 @@ set_network() {
 }
 
 set_desktop() {
-  d=$(D --title " Desktop " --default-item "$DESKTOP" --menu "A desktop you reach over VNC (port 5901).\nIt runs as your user account and needs the network to download.\nThe VNC password is the user's password; VNC only checks its first 8 characters." 0 0 0 \
-    none "Console only" \
-    xfce "XFCE: full desktop" \
-    jwm "JWM: light window manager") && DESKTOP=$d
+  set -- none "Console only"
+  while IFS='|' read -r name desc; do set -- "$@" "$name" "$desc"; done <<EOF
+$(/usr/local/sbin/setup-desktop --list)
+EOF
+  d=$(D --title " Desktop " --default-item "$DESKTOP" --menu "A desktop you reach over VNC (port 5901).\nIt runs as your user account and needs the network to download.\nThe VNC password is the user's password; VNC only checks its first 8 characters.\nYou can also add one later with setup-desktop." 0 0 0 "$@") && DESKTOP=$d
 }
 
 set_extra() {
@@ -270,19 +271,7 @@ do_install() {
   if [ "$DESKTOP" != none ]; then
     progress 72 "Installing the $DESKTOP desktop"
     cp /etc/resolv.conf $MNT/etc/resolv.conf
-    case $DESKTOP in
-      xfce) pkgs="xfce4 xfce4-terminal" cmd=startxfce4 ;;
-      jwm) pkgs="jwm xterm" cmd=jwm ;;
-    esac
-    # shellcheck disable=SC2086
-    chroot $MNT apk add $pkgs tigervnc dbus dbus-x11 font-dejavu
-    ln -sfn /etc/init.d/dbus $MNT/etc/runlevels/default/dbus
-    ln -sfn /etc/init.d/lightos-vnc $MNT/etc/runlevels/default/lightos-vnc
-    sed -i "s/^VNC_USER=.*/VNC_USER=\"$USERNAME\"/; s/^DESKTOP=.*/DESKTOP=\"$cmd\"/" $MNT/etc/conf.d/lightos-vnc
-    mkdir -p "$MNT/home/$USERNAME/.vnc"
-    printf '%s\n' "$USERPW" | chroot $MNT vncpasswd -f > "$MNT/home/$USERNAME/.vnc/passwd"
-    chmod 600 "$MNT/home/$USERNAME/.vnc/passwd"
-    chroot $MNT chown -R "$USERNAME:$USERNAME" "/home/$USERNAME/.vnc"
+    printf '%s\n' "$USERPW" | chroot $MNT /usr/local/sbin/setup-desktop --no-start "$DESKTOP" "$USERNAME"
   fi
 
   progress 85 "Installing the bootloader"
