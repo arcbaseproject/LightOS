@@ -307,6 +307,10 @@ install() {
   if { [ -n "$EXTRA" ] || [ "$DESKTOP" != none ]; } && [ "$NETWORK" = none ]; then
     msg "Extra packages and the desktop need the network. Set Network to dhcp." 8; return
   fi
+  # udhcpc writes resolv.conf only on a lease, and the downloads copy it into the new system.
+  if { [ -n "$EXTRA" ] || [ "$DESKTOP" != none ]; } && [ ! -s /etc/resolv.conf ]; then
+    msg "This live system has no network connection, so extra packages and the desktop can't download.\nPlug in Ethernet and run: rc-service networking restart\nOr remove them and add them after install with lpkg or setup-desktop." 11; return
+  fi
   D --title " Confirm " --cr-wrap --no-collapse --defaultno --yes-label "Install" --no-label "Back" --yesno \
     "\n$(summary)\n\n\Z1\ZbALL DATA ON /dev/$DISK WILL BE ERASED.\Zn\n\nInstall LightOS now?" 0 0 || return
 
