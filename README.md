@@ -1,8 +1,10 @@
+<p align="center"><img src="logo.svg" alt="LightOS logo" width="220"></p>
+
 # LightOS
 
-LightOS is a small Linux distribution. It pairs a 3 MB custom kernel with Alpine Linux's userland, so you install software from Alpine's 28,000 packages with `lpkg`.
+LightOS is a small Linux distribution. It pairs a 4 MB custom kernel with Alpine Linux's userland, so you install software from Alpine's 28,000 packages with `lpkg`.
 
-You boot the 16 MB ISO into a live system that runs from RAM, then run `light-install` to put LightOS on a disk. The installed system boots on BIOS and UEFI machines.
+You boot the 21 MB ISO into a live system that runs from RAM, then run `light-install` to put LightOS on a disk. The installed system boots on BIOS and UEFI machines.
 
 ## Requirements
 
@@ -171,7 +173,7 @@ Install with `--user`, or as root. A system-wide install from a normal account n
 
 ## Limits
 
-- The kernel drives virtio, SATA, NVMe and USB disks, Intel e1000 and virtio network cards, and USB keyboards. Wi-Fi and most other network cards don't work yet.
+- The kernel drives virtio, SATA, NVMe and USB disks, Intel (e1000, e1000e, igb), Realtek (r8169, RTL8152 USB), USB CDC Ethernet and virtio network cards, and USB keyboards. Wi-Fi doesn't work yet.
 - Flatpak runs command-line apps only. Graphical apps need a desktop, which LightOS doesn't have yet.
 - The installer takes a whole disk. It doesn't dual-boot, encrypt, resize, add swap or install a desktop.
 - `poweroff -f` skips unmounting the disk. Use `poweroff`.
