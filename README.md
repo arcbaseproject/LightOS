@@ -173,7 +173,7 @@ Install with `--user`, or as root. A system-wide install from a normal account n
 
 ## Limits
 
-- The kernel drives virtio, SATA, NVMe and USB disks, Intel (e1000, e1000e, igb), Realtek (r8169, RTL8152 USB), USB CDC Ethernet and virtio network cards, and USB keyboards. Wi-Fi doesn't work yet.
+- The kernel drives virtio, SATA, NVMe and USB disks, Intel (e1000, e1000e, igb, igc), Realtek (r8169, RTL8152 USB), USB CDC Ethernet and virtio network cards, and USB keyboards. Wi-Fi doesn't work yet.
 - Flatpak runs command-line apps only. Graphical apps need a desktop, which LightOS doesn't have yet.
 - The installer takes a whole disk. It doesn't dual-boot, encrypt, resize, add swap or install a desktop.
 - `poweroff -f` skips unmounting the disk. Use `poweroff`.
