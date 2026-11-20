@@ -2,19 +2,6 @@
 # Run by wisp-update after it installs a release's files. Brings older installs up to date.
 # Safe to run again.
 set -e
-# 0.3.0: LightOS was renamed Wisp Linux. Move the VNC desktop service and its settings to the
-# new name and remove the old files. A running lightos-vnc keeps running until the reboot.
-if [ -f /etc/conf.d/lightos-vnc ] && [ ! -f /etc/conf.d/wisp-vnc ]; then
-  sed 's/lightos-vnc/wisp-vnc/g' /etc/conf.d/lightos-vnc > /etc/conf.d/wisp-vnc
-fi
-if [ -L /etc/runlevels/default/lightos-vnc ]; then
-  ln -sfn /etc/init.d/wisp-vnc /etc/runlevels/default/wisp-vnc
-fi
-rm -f /etc/runlevels/default/lightos-vnc /etc/init.d/lightos-vnc /etc/conf.d/lightos-vnc
-rm -rf /usr/share/lightos /etc/lightos
-rm -f /usr/local/sbin/light-install /usr/local/sbin/light-update
-[ ! -f /boot/limine.conf ] || sed -i 's|^/LightOS$|/Wisp Linux|' /boot/limine.conf
-
 /usr/share/wisp/setup-services
 # Default config files (in /usr/share/wisp/defaults): install one when it's missing or isn't
 # Wisp Linux's (for example Alpine's package default), and keep it otherwise, since you may have edited it.
@@ -23,6 +10,24 @@ rm -f /usr/local/sbin/light-install /usr/local/sbin/light-update
 done
 # busybox-openrc runs klogd as this user but no package creates it.
 id klogd >/dev/null 2>&1 || adduser -S -D -H -h /dev/null -s /sbin/nologin klogd
+
+# 0.3.0: LightOS was renamed Wisp Linux. Move the VNC desktop service and its settings to the
+# new name, replacing the default the loop above installed, and remove the old files.
+# A running lightos-vnc keeps running until the reboot.
+if [ -f /etc/conf.d/lightos-vnc ]; then
+  sed 's/lightos-vnc/wisp-vnc/g' /etc/conf.d/lightos-vnc > /etc/conf.d/wisp-vnc
+fi
+if [ -L /etc/runlevels/default/lightos-vnc ]; then
+  ln -sfn /etc/init.d/wisp-vnc /etc/runlevels/default/wisp-vnc
+fi
+rm -f /etc/runlevels/default/lightos-vnc /etc/init.d/lightos-vnc /etc/conf.d/lightos-vnc
+rm -rf /usr/share/lightos /etc/lightos
+rm -f /usr/local/sbin/light-install /usr/local/sbin/light-update
+# busybox init keeps the inittab it booted with, so until the reboot it runs
+# /usr/share/lightos/rc to shut down. Keep that path working.
+mkdir /usr/share/lightos
+ln -s /usr/share/wisp/rc /usr/share/lightos/rc
+[ ! -f /boot/limine.conf ] || sed -i 's|^/LightOS$|/Wisp Linux|' /boot/limine.conf
 
 # 0.1.x: rcS read /etc/lightos.conf. 0.2.0 uses OpenRC services and Alpine's config files.
 if [ -f /etc/lightos.conf ]; then
