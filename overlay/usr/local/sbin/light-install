@@ -55,6 +55,15 @@ user_available() {
   awk -F: -v name="$1" '$1 == name { found=1 } END { exit found }' /etc/passwd /etc/group
 }
 
+# Wired NICs, cabled ones first. Multi-port machines may have the cable in eth1, not eth0.
+# carrier reads 1 with a cable, 0 without, and fails while the link is down.
+nics() {
+  for d in /sys/class/net/*; do
+    [ -e "$d/device" ] && [ ! -d "$d/wireless" ] || continue
+    printf '%s %s\n' "$(cat "$d/carrier" 2>/dev/null || echo 0)" "${d##*/}"
+  done | sort -k1,1r -k2,2 | awk '{ print $2 }'
+}
+
 # --- Settings and defaults ---
 KEYMAP=          # empty: US, the kernel's built-in layout
 LOCALE=C.UTF-8
@@ -64,7 +73,7 @@ ROOTPW=
 USERNAME= USERPW= USERSUDO=yes
 TZONE=UTC
 NTP=yes
-NETWORK=dhcp
+NETWORK=$(nics | head -n 1); : "${NETWORK:=none}"
 EXTRA=
 DESKTOP=none
 
@@ -165,8 +174,21 @@ set_ntp() {
 }
 
 set_network() {
+  # Bring links up so carrier shows which port has the cable.
+  for n in $(nics); do ip link set dev "$n" up 2>/dev/null; done; sleep 2
+  set --
+  for n in $(nics); do
+    case $(cat /sys/class/net/$n/carrier 2>/dev/null) in 1) c="cable connected" ;; *) c="no cable" ;; esac
+    set -- "$@" "$n" "Wired DHCP, $c ($(cat /sys/class/net/$n/address))"
+  done
   n=$(D --title " Network " --default-item "$NETWORK" --menu "Network setup:" 0 0 0 \
-    dhcp "Wired, automatic (DHCP on eth0)" none "No network") && NETWORK=$n
+    "$@" none "No network") || return
+  NETWORK=$n
+  # Get a lease now so the installer can download over this port.
+  if [ "$n" != none ] && [ ! -s /etc/resolv.conf ]; then
+    D --infobox "Requesting an address on $n..." 3 50
+    udhcpc -i "$n" -n -q -t 3 >/dev/null 2>&1
+  fi
 }
 
 set_desktop() {
@@ -243,7 +265,7 @@ do_install() {
   printf 'PARTUUID=%s\t/\text4\trw,relatime\t0 1\n' "$ROOTUUID" >> $MNT/etc/fstab
   if [ -n "$KEYMAP" ]; then echo "KEYMAP=/usr/share/bkeymaps/$KEYMAP.bmap.gz" > $MNT/etc/conf.d/loadkmap; fi
   printf 'auto lo\niface lo inet loopback\n' > $MNT/etc/network/interfaces
-  [ "$NETWORK" = none ] || printf '\nauto eth0\niface eth0 inet dhcp\n' >> $MNT/etc/network/interfaces
+  [ "$NETWORK" = none ] || printf '\nauto %s\niface %s inet dhcp\n' "$NETWORK" "$NETWORK" >> $MNT/etc/network/interfaces
   [ "$NTP" = no ] || ln -sfn /etc/init.d/ntpd $MNT/etc/runlevels/default/ntpd
   printf 'export LANG=%s\n' "$LOCALE" > $MNT/etc/profile.d/locale.sh
   ln -sf "../usr/share/zoneinfo/$TZONE" $MNT/etc/localtime
@@ -305,11 +327,11 @@ install() {
     msg "The desktop runs as a user account. Add one under User account." 8; return
   fi
   if { [ -n "$EXTRA" ] || [ "$DESKTOP" != none ]; } && [ "$NETWORK" = none ]; then
-    msg "Extra packages and the desktop need the network. Set Network to dhcp." 8; return
+    msg "Extra packages and the desktop need the network. Choose a port under Network." 8; return
   fi
   # udhcpc writes resolv.conf only on a lease, and the downloads copy it into the new system.
   if { [ -n "$EXTRA" ] || [ "$DESKTOP" != none ]; } && [ ! -s /etc/resolv.conf ]; then
-    msg "This live system has no network connection, so extra packages and the desktop can't download.\nPlug in Ethernet and run: rc-service networking restart\nOr remove them and add them after install with lpkg or setup-desktop." 11; return
+    msg "This live system has no network connection, so extra packages and the desktop can't download.\nPlug in Ethernet, then choose its port under Network.\nOr remove them and add them after install with lpkg or setup-desktop." 11; return
   fi
   D --title " Confirm " --cr-wrap --no-collapse --defaultno --yes-label "Install" --no-label "Back" --yesno \
     "\n$(summary)\n\n\Z1\ZbALL DATA ON /dev/$DISK WILL BE ERASED.\Zn\n\nInstall LightOS now?" 0 0 || return

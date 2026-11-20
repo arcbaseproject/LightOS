@@ -118,6 +118,24 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(Path(result.stdout).stat().st_mode & 0o777, 0o700)
         self.assertEqual((self.root / "victim").read_text(), "untouched")
 
+    def nics(self, ports):
+        for name, carrier in ports.items():
+            (self.root / f"sys/class/net/{name}/device").mkdir(parents=True)
+            if carrier is not None:
+                self.write(f"sys/class/net/{name}/carrier", carrier + "\n")
+        (self.root / "sys/class/net/lo").mkdir(parents=True, exist_ok=True)
+        code = "nics()" + SOURCE.split("nics()", 1)[1].split("# --- Settings", 1)[0]
+        code = code.replace("/sys/", f"{self.root}/sys/")
+        return self.run_shell(code + "\nnics").stdout.split()
+
+    def test_cabled_port_listed_first(self):
+        self.assertEqual(self.nics({"eth0": "0", "eth1": "1", "eth2": None}), ["eth1", "eth0", "eth2"])
+
+    def test_loopback_and_wireless_skipped(self):
+        (self.root / "sys/class/net/wlan0/device").mkdir(parents=True)
+        (self.root / "sys/class/net/wlan0/wireless").mkdir()
+        self.assertEqual(self.nics({"eth0": None}), ["eth0"])
+
 
 if __name__ == "__main__":
     unittest.main()

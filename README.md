@@ -54,7 +54,7 @@ The installer works like archinstall: a main menu lists every setting with its c
 | User account | Optional, with or without `sudo` (doas, with a `sudo` command). |
 | Timezone | Region, then city. |
 | Time sync (NTP) | Busybox `ntpd` at boot, against `pool.ntp.org`. |
-| Network | Wired DHCP on `eth0`, or none. |
+| Network | Wired DHCP on the port you choose (cabled ports listed first), or none. |
 | Desktop | None, XFCE, LXQt, MATE or JWM, reached over VNC. Needs a user account and the network. |
 | Extra packages | Alpine packages to install along with the system. Needs a network connection. |
 
