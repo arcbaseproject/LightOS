@@ -1,7 +1,7 @@
 #!/bin/sh
 # Build a minimal LightOS kernel: tinyconfig + only what LightOS uses. Drivers built in, no modules.
 set -e
-cd "$(dirname "$0")/kernel/linux-7.3.4"
+cd "$(dirname "$0")/kernel/linux-7.3.5"
 OLD=$(cat .config 2>/dev/null | md5sum)
 make tinyconfig >/dev/null
 ./scripts/config \

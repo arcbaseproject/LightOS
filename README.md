@@ -19,7 +19,7 @@ base-devel bc flex bison libelf cpio xorriso qemu-system-x86 edk2-ovmf
 Fetch the Linux source into the repo folder:
 
 ```sh
-mkdir kernel && curl -L https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.3.4.tar.xz | tar xJ -C kernel
+mkdir kernel && curl -L https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.3.5.tar.xz | tar xJ -C kernel
 ```
 
 ## Build and run

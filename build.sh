@@ -26,7 +26,7 @@ chroot $R /sbin/apk add --no-cache -q $PKGS
 # busybox-openrc runs klogd as this user but no package creates it.
 chroot $R adduser -S -D -H -h /dev/null -s /sbin/nologin klogd
 # OpenRC's modules service runs modprobe, which fails without this folder; the kernel has no modules.
-KVER=$(cat kernel/linux-7.3.4/include/config/kernel.release)
+KVER=$(cat kernel/linux-7.3.5/include/config/kernel.release)
 mkdir -p $R/lib/modules/$KVER && touch $R/lib/modules/$KVER/modules.dep
 for d in $DEVS; do umount $R/dev/$d; rm $R/dev/$d; done
 rm $R/etc/resolv.conf
