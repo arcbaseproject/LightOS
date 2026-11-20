@@ -1,10 +1,10 @@
 #!/sbin/openrc-run
 # A desktop over VNC: Xvnc on display :1 (port 5901) running DESKTOP as VNC_USER.
-# Settings: /etc/conf.d/lightos-vnc
+# Settings: /etc/conf.d/wisp-vnc
 
-name="LightOS VNC desktop"
+name="Wisp Linux VNC desktop"
 supervisor=supervise-daemon
-command=/usr/share/lightos/vnc-session
+command=/usr/share/wisp/vnc-session
 command_args="${LISTEN:-all} ${GEOMETRY:-1280x800} ${DESKTOP:-startxfce4}"
 command_user="${VNC_USER}"
 respawn_delay=5
@@ -18,7 +18,7 @@ depend() {
 
 start_pre() {
 	if [ -z "$VNC_USER" ]; then
-		eerror "Set VNC_USER in /etc/conf.d/lightos-vnc"
+		eerror "Set VNC_USER in /etc/conf.d/wisp-vnc"
 		return 1
 	fi
 	home=$(awk -F: -v u="$VNC_USER" '$1 == u { print $6 }' /etc/passwd)

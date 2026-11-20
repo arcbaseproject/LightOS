@@ -1,5 +1,5 @@
 #!/bin/sh
-# lpkg: LightOS package manager, a front end for Alpine's apk (same commands: add, del, update, upgrade, search).
+# lpkg: Wisp Linux package manager, a front end for Alpine's apk (same commands: add, del, update, upgrade, search).
 case $1 in
   add|del|update|upgrade|fix|cache)
     [ "$(id -u)" = 0 ] || { echo "lpkg: '$1' changes the system; run it as root: sudo lpkg $*" >&2; exit 1; } ;;

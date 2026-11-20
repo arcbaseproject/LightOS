@@ -1,8 +1,8 @@
 # busybox init runs OpenRC for services, and keeps a login prompt on the screen and serial port.
-::sysinit:/usr/share/lightos/rc sysinit
-::sysinit:/usr/share/lightos/rc boot
-::wait:/usr/share/lightos/rc default
+::sysinit:/usr/share/wisp/rc sysinit
+::sysinit:/usr/share/wisp/rc boot
+::wait:/usr/share/wisp/rc default
 tty1::respawn:/sbin/getty 38400 tty1
 ttyS0::respawn:/sbin/getty -L 0 ttyS0 xterm-256color
 ::ctrlaltdel:/sbin/reboot
-::shutdown:/usr/share/lightos/rc shutdown
+::shutdown:/usr/share/wisp/rc shutdown

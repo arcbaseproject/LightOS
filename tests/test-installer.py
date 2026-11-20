@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 
-SOURCE = (Path(__file__).resolve().parents[1] / "overlay/usr/local/sbin/light-install").read_text()
+SOURCE = (Path(__file__).resolve().parents[1] / "overlay/usr/local/sbin/wisp-install").read_text()
 
 
 class InstallerTests(unittest.TestCase):
@@ -109,7 +109,7 @@ class InstallerTests(unittest.TestCase):
 
     def test_private_workspace_ignores_legacy_symlinks(self):
         self.write("victim", "untouched")
-        for name in ("light-install.log", "light-install.rc", "light-install.us.bmap"):
+        for name in ("wisp-install.log", "wisp-install.rc", "wisp-install.us.bmap"):
             (self.root / name).symlink_to(self.root / "victim")
         code = "WORK=" + SOURCE.split("WORK=", 1)[1].split("export DIALOGRC", 1)[0]
         code = code.replace("/tmp/", f"{self.root}/")

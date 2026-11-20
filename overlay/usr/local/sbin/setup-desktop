@@ -3,7 +3,7 @@
 #   setup-desktop                              menu
 #   setup-desktop [--no-start] DESKTOP USER    no menu; reads the VNC password from stdin
 #   setup-desktop --list                       desktops, one "name|description" per line
-# --no-start skips starting services, for light-install, which runs this inside the new system.
+# --no-start skips starting services, for wisp-install, which runs this inside the new system.
 
 # name|description|packages|session command
 DESKTOPS="xfce|XFCE: full desktop|xfce4 xfce4-terminal|startxfce4
@@ -11,7 +11,7 @@ lxqt|LXQt: light Qt desktop|lxqt-desktop|startlxqt
 mate|MATE: classic desktop|mate-desktop-environment|mate-session
 jwm|JWM: minimal window manager|jwm xterm|jwm"
 COMMON="tigervnc dbus dbus-x11 font-dejavu"
-CONF=/etc/conf.d/lightos-vnc
+CONF=/etc/conf.d/wisp-vnc
 
 die() { echo "setup-desktop: $*" >&2; exit 1; }
 field() { printf '%s\n' "$DESKTOPS" | awk -F'|' -v d="$1" -v n="$2" '$1 == d { print $n }'; }
@@ -30,18 +30,18 @@ setup() {
   # shellcheck disable=SC2086
   apk add $pkgs $COMMON || die "package install failed"
 
-  [ -f $CONF ] || cp /usr/share/lightos/defaults$CONF $CONF
+  [ -f $CONF ] || cp /usr/share/wisp/defaults$CONF $CONF
   sed -i "s/^VNC_USER=.*/VNC_USER=\"$user\"/; s/^DESKTOP=.*/DESKTOP=\"$(field "$desktop" 4)\"/" $CONF
   mkdir -p "$home/.vnc"
   printf '%s\n' "$password" | vncpasswd -f > "$home/.vnc/passwd"
   chmod 600 "$home/.vnc/passwd"
   chown -R "$user:$(id -gn "$user")" "$home/.vnc"
   ln -sfn /etc/init.d/dbus /etc/runlevels/default/dbus
-  ln -sfn /etc/init.d/lightos-vnc /etc/runlevels/default/lightos-vnc
+  ln -sfn /etc/init.d/wisp-vnc /etc/runlevels/default/wisp-vnc
 
   if [ "$start" = yes ]; then
     rc-service dbus start
-    rc-service lightos-vnc restart
+    rc-service wisp-vnc restart
     ip=$(ip -4 -o addr show scope global 2>/dev/null | awk '{ sub(/\/.*/, "", $4); print $4; exit }')
     echo
     echo "Desktop running. Connect with a VNC viewer to ${ip:-this machine}:5901"
@@ -63,8 +63,8 @@ fi
 
 # --- Menu ---
 command -v dialog >/dev/null || die "needs dialog: lpkg add dialog"
-export DIALOGRC=/etc/lightos/dialogrc NCURSES_NO_UTF8_ACS=1
-D() { dialog --colors --backtitle "LightOS Desktop Setup" "$@" 3>&1 1>&2 2>&3; }
+export DIALOGRC=/etc/wisp/dialogrc NCURSES_NO_UTF8_ACS=1
+D() { dialog --colors --backtitle "Wisp Linux Desktop Setup" "$@" 3>&1 1>&2 2>&3; }
 quit() { clear; echo "setup-desktop: cancelled, nothing was changed"; exit 1; }
 
 set --

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build a minimal LightOS kernel: tinyconfig + only what LightOS uses. Drivers built in, no modules.
+# Build a minimal Wisp Linux kernel: tinyconfig + only what Wisp Linux uses. Drivers built in, no modules.
 set -e
 cd "$(dirname "$0")/kernel/linux-7.3.5"
 OLD=$(cat .config 2>/dev/null | md5sum)

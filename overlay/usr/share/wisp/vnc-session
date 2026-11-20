@@ -1,5 +1,5 @@
 #!/bin/sh
-# Run by the lightos-vnc service as the desktop user: Xvnc on display :1, then the desktop.
+# Run by the wisp-vnc service as the desktop user: Xvnc on display :1, then the desktop.
 # Usage: vnc-session all|localhost GEOMETRY DESKTOP-COMMAND...
 listen=$1 geometry=$2; shift 2
 HOME=$(awk -F: -v u="$(id -un)" '$1 == u { print $6 }' /etc/passwd)

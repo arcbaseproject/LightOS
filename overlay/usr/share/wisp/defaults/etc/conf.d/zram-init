@@ -1,4 +1,4 @@
-# LightOS: one compressed swap device in RAM, half the size of RAM, using zstd.
+# Wisp Linux: one compressed swap device in RAM, half the size of RAM, using zstd.
 # zram is built into the kernel, so there's no module to load or unload.
 load_on_start=no
 unload_on_stop=no

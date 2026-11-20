@@ -1,12 +1,25 @@
 #!/bin/sh
-# Run by light-update after it installs a release's files. Brings older installs up to date.
+# Run by wisp-update after it installs a release's files. Brings older installs up to date.
 # Safe to run again.
 set -e
-/usr/share/lightos/setup-services
-# Default config files (in /usr/share/lightos/defaults): install one when it's missing or isn't
-# LightOS's (for example Alpine's package default), and keep it otherwise, since you may have edited it.
-(cd /usr/share/lightos/defaults && find etc -type f) | while read -r f; do
-  grep -qi lightos "/$f" 2>/dev/null || { mkdir -p "/${f%/*}"; cp "/usr/share/lightos/defaults/$f" "/$f"; }
+# 0.3.0: LightOS was renamed Wisp Linux. Move the VNC desktop service and its settings to the
+# new name and remove the old files. A running lightos-vnc keeps running until the reboot.
+if [ -f /etc/conf.d/lightos-vnc ] && [ ! -f /etc/conf.d/wisp-vnc ]; then
+  sed 's/lightos-vnc/wisp-vnc/g' /etc/conf.d/lightos-vnc > /etc/conf.d/wisp-vnc
+fi
+if [ -L /etc/runlevels/default/lightos-vnc ]; then
+  ln -sfn /etc/init.d/wisp-vnc /etc/runlevels/default/wisp-vnc
+fi
+rm -f /etc/runlevels/default/lightos-vnc /etc/init.d/lightos-vnc /etc/conf.d/lightos-vnc
+rm -rf /usr/share/lightos /etc/lightos
+rm -f /usr/local/sbin/light-install /usr/local/sbin/light-update
+[ ! -f /boot/limine.conf ] || sed -i 's|^/LightOS$|/Wisp Linux|' /boot/limine.conf
+
+/usr/share/wisp/setup-services
+# Default config files (in /usr/share/wisp/defaults): install one when it's missing or isn't
+# Wisp Linux's (for example Alpine's package default), and keep it otherwise, since you may have edited it.
+(cd /usr/share/wisp/defaults && find etc -type f) | while read -r f; do
+  grep -qiE 'wisp|lightos' "/$f" 2>/dev/null || { mkdir -p "/${f%/*}"; cp "/usr/share/wisp/defaults/$f" "/$f"; }
 done
 # busybox-openrc runs klogd as this user but no package creates it.
 id klogd >/dev/null 2>&1 || adduser -S -D -H -h /dev/null -s /sbin/nologin klogd

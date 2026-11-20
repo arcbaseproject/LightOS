@@ -1,6 +1,6 @@
-NAME="LightOS"
-ID=lightos
+NAME="Wisp Linux"
+ID=wisp
 ID_LIKE=alpine
-PRETTY_NAME="LightOS"
-HOME_URL="https://github.com/arcbaseproject/LightOS"
-BUG_REPORT_URL="https://github.com/arcbaseproject/LightOS/issues"
+PRETTY_NAME="Wisp Linux"
+HOME_URL="https://github.com/arcbaseproject/Wisp-Linux"
+BUG_REPORT_URL="https://github.com/arcbaseproject/Wisp-Linux/issues"

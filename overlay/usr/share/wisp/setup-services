@@ -1,5 +1,5 @@
 #!/bin/sh
-# Enable LightOS's standard OpenRC services in ROOT (default /). Safe to run again.
+# Enable Wisp Linux's standard OpenRC services in ROOT (default /). Safe to run again.
 # Same set as a stock Alpine install, minus hwdrivers (the kernel has no modules), plus cgroups,
 # machine-id and zram swap.
 ROOT=${1:-}

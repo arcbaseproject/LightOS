@@ -9,12 +9,12 @@ jobs:
       - name: Syntax-check shell scripts
         run: |
           for f in *.sh overlay/usr/local/sbin/* overlay/usr/local/bin/lpkg \
-                   overlay/usr/share/lightos/rc overlay/usr/share/lightos/setup-services \
-                   overlay/usr/share/lightos/post-update overlay/usr/share/lightos/vnc-session \
-                   overlay/etc/init.d/lightos-vnc; do
+                   overlay/usr/share/wisp/rc overlay/usr/share/wisp/setup-services \
+                   overlay/usr/share/wisp/post-update overlay/usr/share/wisp/vnc-session \
+                   overlay/etc/init.d/wisp-vnc; do
             sh -n "$f" || { echo "::error file=$f::syntax error"; exit 1; }
           done
       - name: ShellCheck (errors only)
-        run: shellcheck -S error -s sh *.sh overlay/usr/local/sbin/* overlay/usr/local/bin/lpkg overlay/usr/share/lightos/rc overlay/usr/share/lightos/setup-services overlay/usr/share/lightos/post-update overlay/usr/share/lightos/vnc-session
+        run: shellcheck -S error -s sh *.sh overlay/usr/local/sbin/* overlay/usr/local/bin/lpkg overlay/usr/share/wisp/rc overlay/usr/share/wisp/setup-services overlay/usr/share/wisp/post-update overlay/usr/share/wisp/vnc-session
       - name: Installer tests
         run: python3 tests/test-installer.py

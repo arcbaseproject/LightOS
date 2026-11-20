@@ -1,20 +1,20 @@
 #!/bin/sh
-# light-update: install the latest LightOS release from GitHub, then Alpine package updates.
-# Usage: light-update [--check]    --check only reports whether an update exists.
+# wisp-update: install the latest Wisp Linux release from GitHub, then Alpine package updates.
+# Usage: wisp-update [--check]    --check only reports whether an update exists.
 set -e
-REPO=arcbaseproject/LightOS
+REPO=arcbaseproject/Wisp-Linux
 # Overridable to test against a local server.
-API=${LIGHT_UPDATE_API:-https://api.github.com/repos/$REPO/releases/latest}
-DL=${LIGHT_UPDATE_DL:-https://github.com/$REPO/releases/download}
+API=${WISP_UPDATE_API:-https://api.github.com/repos/$REPO/releases/latest}
+DL=${WISP_UPDATE_DL:-https://github.com/$REPO/releases/download}
 
-die() { echo "light-update: $*" >&2; exit 1; }
+die() { echo "wisp-update: $*" >&2; exit 1; }
 # newer A B: true if version A is newer than B (numeric, dot-separated).
 newer() { awk -v a="$1" -v b="$2" 'BEGIN { n = split(a, x, "."); m = split(b, y, ".")
   for (i = 1; i <= (n > m ? n : m); i++) { if (x[i] + 0 > y[i] + 0) exit 0; if (x[i] + 0 < y[i] + 0) exit 1 }
   exit 1 }'; }
 
-[ "$(id -u)" = 0 ] || die "run as root: sudo light-update"
-[ ! -e /init ] || die "this is the live system; install LightOS first with light-install"
+[ "$(id -u)" = 0 ] || die "run as root: sudo wisp-update"
+[ ! -e /init ] || die "this is the live system; install Wisp Linux first with wisp-install"
 
 VERSION_ID=
 . /etc/os-release
@@ -22,14 +22,14 @@ CUR=${VERSION_ID:-0}
 
 json=$(wget -qO- "$API") || die "can't get the latest release from $API (offline, or no release published yet)"
 TAG=$(printf '%s\n' "$json" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n 1)
-[ -n "$TAG" ] || die "no LightOS release found"
+[ -n "$TAG" ] || die "no Wisp Linux release found"
 NEW=${TAG#v}
 
 if newer "$NEW" "$CUR"; then
-  echo "LightOS $NEW is available (installed: $CUR)."
+  echo "Wisp Linux $NEW is available (installed: $CUR)."
   UPDATE=yes
 else
-  echo "LightOS $CUR is up to date."
+  echo "Wisp Linux $CUR is up to date."
   UPDATE=no
 fi
 [ "$1" = --check ] && exit 0
@@ -38,30 +38,30 @@ if [ $UPDATE = yes ]; then
   mountpoint -q /boot || die "/boot is not mounted; can't install the kernel"
   W=$(mktemp -d)
   trap 'rm -rf "$W"' EXIT
-  echo "Downloading LightOS $NEW"
-  wget -qO "$W/lightos-update.tar.gz" "$DL/$TAG/lightos-update.tar.gz" || die "download failed"
+  echo "Downloading Wisp Linux $NEW"
+  wget -qO "$W/wisp-update.tar.gz" "$DL/$TAG/wisp-update.tar.gz" || die "download failed"
   wget -qO "$W/SHA256SUMS" "$DL/$TAG/SHA256SUMS" || die "download failed"
-  (cd "$W" && grep ' lightos-update.tar.gz$' SHA256SUMS | sha256sum -c -s) || die "checksum mismatch, nothing installed"
+  (cd "$W" && grep ' wisp-update.tar.gz$' SHA256SUMS | sha256sum -c -s) || die "checksum mismatch, nothing installed"
   mkdir "$W/new"
-  tar -xzf "$W/lightos-update.tar.gz" -C "$W/new"
+  tar -xzf "$W/wisp-update.tar.gz" -C "$W/new"
 
   # Keep copies of /etc files this update replaces, in case you changed them.
-  B=/var/backups/light-update/$CUR
+  B=/var/backups/wisp-update/$CUR
   (cd "$W/new" && find etc -type f) | while read -r f; do
     if [ -f "/$f" ] && ! cmp -s "$W/new/$f" "/$f"; then mkdir -p "$B/${f%/*}"; cp -a "/$f" "$B/$f"; fi
   done
 
   # Install the packages the new release needs before its files, which may depend on them
   # (0.2.0's inittab needs OpenRC). If this fails, nothing has been replaced yet.
-  echo "Installing packages LightOS $NEW needs"
+  echo "Installing packages Wisp Linux $NEW needs"
   # shellcheck disable=SC2046
-  apk add -q $(cat "$W/new/usr/share/lightos/packages") || die "package install failed, nothing replaced"
+  apk add -q $(cat "$W/new/usr/share/wisp/packages") || die "package install failed, nothing replaced"
 
-  echo "Installing LightOS $NEW"
+  echo "Installing Wisp Linux $NEW"
   cp "$W/new/boot/bzImage" /boot/bzImage.new && mv /boot/bzImage.new /boot/bzImage
   rm -r "$W/new/boot"
   cp -a "$W/new/." /
-  /usr/share/lightos/post-update
+  /usr/share/wisp/post-update
   [ -d "$B" ] && echo "Replaced /etc files are backed up in $B"
 fi
 
@@ -76,4 +76,4 @@ bootpart=$(awk '$2 == "/boot" { print $1 }' /proc/mounts)
 disk=$(basename "$(readlink -f "/sys/class/block/${bootpart#/dev/}/..")")
 limine bios-install "/dev/$disk" 1 >/dev/null 2>&1 || die "limine bios-install failed on /dev/$disk"
 
-[ $UPDATE = yes ] && echo "LightOS $NEW installed. Reboot to start the new kernel." || true
+[ $UPDATE = yes ] && echo "Wisp Linux $NEW installed. Reboot to start the new kernel." || true

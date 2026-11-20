@@ -5,7 +5,8 @@
 # Build outputs
 /build/
 /bzImage
-/lightos.iso
+/wisp.iso
 /disk.img
+/wisp-update.tar.gz
 /lightos-update.tar.gz
 /SHA256SUMS
